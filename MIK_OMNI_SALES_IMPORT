@@ -1,0 +1,2696 @@
+create or replace PACKAGE BODY      MIK_OMNI_SALES_IMPORT
+
+IS
+  program_error              EXCEPTION;
+  validation_failure         EXCEPTION;
+  too_many_rows              EXCEPTION;
+  v_stgId                    NUMBER;
+  l_error_code               NUMBER (10)     := 0;
+  l_error_mesg               VARCHAR2 (4000) := NULL;
+  l_TRANSACTION_OBJECT       TRANSACTION_OBJECT;
+  g_omni_err_file_type utl_file.file_type;
+
+  PROCEDURE PROC_LOG_IMPORT_ERROR (
+    p_error_code      IN NUMBER,
+    p_error_message   IN VARCHAR2,
+    p_transaction_id  IN VARCHAR2,
+    p_stg_id          IN NUMBER,
+    p_message_id      IN VARCHAR2,
+    p_procedure_name  IN VARCHAR2,
+    p_poslog_data     IN CLOB
+  )
+  IS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+    l_buffer VARCHAR2(5000);
+  BEGIN
+    INSERT INTO MIK.MIK_OMNI_IMPORT_ERROR_LOG (
+      ERROR_ID,
+      ERROR_CODE,
+      ERROR_MESSAGE,
+      TRANSACTION_ID,
+      STG_ID,
+      MESSAGE_ID,
+      PROCEDURE_NAME,
+      POSLOG_DATA,
+      ERROR_TIMESTAMP,
+      CREATED_BY
+    ) VALUES (
+      MIK.MIK_OMNI_ERROR_LOG_SEQ.NEXTVAL,
+      p_error_code,
+      p_error_message,
+      p_transaction_id,
+      p_stg_id,
+      p_message_id,
+      p_procedure_name,
+      p_poslog_data,
+      SYSDATE,
+      USER
+    );
+    COMMIT;
+  EXCEPTION
+  WHEN OTHERS THEN
+    BEGIN
+      l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') || ':' || 'ERROR: Failed to insert into MIK_OMNI_IMPORT_ERROR_LOG. ' || SQLERRM;
+      utl_file.put_line(g_omni_err_file_type, l_buffer);
+    EXCEPTION
+    WHEN OTHERS THEN
+      NULL;
+    END;
+  END PROC_LOG_IMPORT_ERROR;
+
+  /*Sub Procedure to Insert Data to MIK_SA_HEAD_STG_IN table*/
+PROCEDURE PROC_SALES_MIK_SA_HEAD_STG_IN_INS
+  (
+    p_stg_id           MIK.MIK_SA_HEAD_STG_IN.STG_ID%TYPE,
+	p_store            MIK.MIK_SA_HEAD_STG_IN.STORE%TYPE,
+	p_business_date    MIK.MIK_SA_HEAD_STG_IN.BUSINESS_DATE%TYPE,
+	p_tran_datetime    MIK.MIK_SA_HEAD_STG_IN.TRAN_DATETIME%TYPE,
+	p_begin_time       MIK.MIK_SA_HEAD_STG_IN.BEGIN_DATETIME%TYPE,
+	p_register         MIK.MIK_SA_HEAD_STG_IN.REGISTER%TYPE,
+	p_tran_no          MIK.MIK_SA_HEAD_STG_IN.TRAN_NO%TYPE,
+	p_cashier          MIK.MIK_SA_HEAD_STG_IN.CASHIER%TYPE,
+	p_salesperson      MIK.MIK_SA_HEAD_STG_IN.SALESPERSON%TYPE,
+	p_tran_type        MIK.MIK_SA_HEAD_STG_IN.TRAN_TYPE%TYPE,
+	p_sub_tran_type    MIK.MIK_SA_HEAD_STG_IN.SUB_TRAN_TYPE%TYPE,
+	p_value            MIK.MIK_SA_HEAD_STG_IN.VALUE%TYPE,
+	p_receipt_barcode  MIK.MIK_SA_HEAD_STG_IN.RECEIPT_BARCODE%TYPE,
+	p_ref_no1		   MIK.MIK_SA_HEAD_STG_IN.REF_NO1%TYPE,
+	p_ref_no4		   MIK.MIK_SA_HEAD_STG_IN.REF_NO4%TYPE,
+	p_loyalty_id       MIK.MIK_SA_HEAD_STG_IN.LOYALTY_ID%TYPE,
+	p_orig_tran        MIK.MIK_SA_HEAD_STG_IN.ORIG_TRAN_NO%TYPE,
+	p_orig_reg         MIK.MIK_SA_HEAD_STG_IN.ORIG_REG_NO%TYPE,
+	p_rounded_amount   MIK.MIK_SA_HEAD_STG_IN.ROUNDED_AMT%TYPE,
+	p_tender_control   MIK.MIK_SA_HEAD_STG_IN.TENDER_CONTROL%TYPE,
+	p_total_tax_amt   MIK.MIK_SA_HEAD_STG_IN.TOTAL_TAX_AMT%TYPE
+  )
+AS
+BEGIN
+--v_inbound_head_seq := v_inbound_head_seq+1;
+INSERT INTO MIK.MIK_SA_HEAD_STG_IN
+(
+STG_ID,
+STORE,
+BUSINESS_DATE,
+TRAN_DATETIME,
+REGISTER,
+TRAN_NO,
+CASHIER,
+SALESPERSON,
+TRAN_TYPE,
+SUB_TRAN_TYPE,
+ORIG_TRAN_NO,
+ORIG_TRAN_TYPE,
+ORIG_REG_NO,
+RECEIPT_BARCODE,
+REF_NO1,
+REF_NO2,
+REF_NO3,
+REF_NO4,
+REASON_CODE,
+VENDOR_NO,
+VENDOR_INVC_NO,
+PAYMENT_REF_NO,
+PROOF_OF_DELIVERY_NO,
+STATUS,
+VALUE,
+BANNER_NO,
+CUST_ORDER_NO,
+CUST_ORDER_DATE,
+ROUNDED_AMT,
+ROUNDED_OFF_AMT,
+BEGIN_DATETIME,
+LOYALTY_ID,
+SYSTEM_CODE,
+STG_STATUS_IND,
+UPDATE_DATETIME,
+CREATE_DATETIME,
+TENDER_CONTROL,
+TOTAL_TAX_AMT
+)
+VALUES
+(
+p_stg_id,         --STG_ID
+p_store,           --STORE 
+p_business_date,    --BUSINESS_DATE
+p_tran_datetime,   --tran_datetime
+p_register,        --register
+p_tran_no,         --tran_no
+p_cashier,        --cashier
+p_salesperson,     --salesperson
+p_tran_type,       --tran_type
+p_sub_tran_type,   --sub_tran_type
+p_orig_tran,            --ORIG_TRAN_NO
+null,            --ORIG_TRAN_TYPE
+p_orig_reg,            --ORIG_REG_NO
+p_receipt_barcode, --RECEIPT_BARCODE
+p_ref_no1,            --REF_NO1
+null,            --REF_NO2 -- This is null for tran types DCLOSE,TOTAL,PVOID,TERM  - added in RTLOG generation
+null,            --REF_NO3 -- This is null for tran types DCLOSE,TOTAL,PVOID,TERM,NOSALE
+p_ref_no4,            --REF_NO4
+null,            --RESASON_CODE -- always null in RESA
+null,            --VENDOR_NO  -- always null in RESA
+null,            --VENDOR_INVC_NO  -- always null in RESA
+null,            --PAYMENT_REF_NO  -- always null in RESA
+null,            --PROOF_OF_DELIVERY_NO  -- always null in RESA
+null,            --STATUS
+p_value,         --value
+'0001',            --BANNER_NO
+null,            --CUST_ORDER_NO  -- always null in RESA
+null,            --CUST_ORDER_DATE  -- always null in RESA
+p_rounded_amount,            --ROUNDED_AMT
+'0',            --ROUNDED_OFF_AMT
+p_begin_time,            --BEGIN_TIME
+p_loyalty_id,    --LOYALTY_ID
+'OMNISTORE',     --SYSTEM_CODE
+'N',             --STG_STATUS_IND
+sysdate,         --UPDATE_DATETIME
+sysdate,         --CREATE_DATETIME
+p_tender_control,
+p_total_tax_amt --TOTAL_TAX_AMT
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_HEAD_STG_IN table failed. Tran_num = ' || p_tran_no || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => p_receipt_barcode,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_HEAD_STG_IN_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_HEAD_STG_IN_INS;
+/*Sub Procedure to Insert Data to MIK_SA_TRAN_HEAD_IN_ATTRIB table*/
+PROCEDURE PROC_SALES_MIK_SA_TRAN_HEAD_IN_ATTRIB_INS
+(
+p_stg_id           MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB.STG_ID%TYPE,
+p_store            MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB.STORE%TYPE,
+p_day              MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB.DAY%TYPE,
+p_attr_seq_no      MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB.ATTRIB_SEQ_NO%TYPE,
+p_attr_type        MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB.ATTRIB_TYPE%TYPE,
+p_attr_val         MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB.ATTRIB_VALUE%TYPE
+)
+AS
+BEGIN
+INSERT INTO MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB
+(
+STORE        , 
+DAY          , 
+STG_ID  , 
+ATTRIB_SEQ_NO, 
+ATTRIB_TYPE  , 
+ATTRIB_VALUE , 
+ERROR_IND    
+)
+VALUES
+(
+p_store,           -- STORE        
+p_day,            --  DAY          
+p_stg_id,         --  STG_ID  
+p_attr_seq_no,    --  ATTRIB_SEQ_NO
+p_attr_type,       -- ATTRIB_TYPE  
+p_attr_val,        -- ATTRIB_VALUE 
+'N'               --  ERROR_IND    
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TRAN_HEAD_IN_ATTRIB table failed. p_stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TRAN_HEAD_IN_ATTRIB_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TRAN_HEAD_IN_ATTRIB_INS;
+/*Sub Procedure to Insert Data to MIK_SA_ITEM_STG_IN table*/
+PROCEDURE PROC_SALES_MIK_SA_ITEM_STG_IN_INS
+  (
+    p_stg_id           MIK.MIK_SA_ITEM_STG_IN.STG_ID%TYPE,
+	p_store            MIK.MIK_SA_ITEM_STG_IN.STORE%TYPE,
+	p_item_seq_no      MIK.MIK_SA_ITEM_STG_IN.ITEM_SEQ_NO%TYPE,
+	p_item_status      MIK.MIK_SA_ITEM_STG_IN.ITEM_STATUS%TYPE,
+	p_item_type        MIK.MIK_SA_ITEM_STG_IN.ITEM_TYPE%TYPE,
+	p_item             MIK.MIK_SA_ITEM_STG_IN.ITEM%TYPE,
+	P_ref_item         MIK.MIK_SA_ITEM_STG_IN.REF_ITEM%TYPE,
+	p_dept             MIK.MIK_SA_ITEM_STG_IN.DEPT%TYPE,  
+	p_class		       MIK.MIK_SA_ITEM_STG_IN.CLASS%TYPE,   
+	p_subclass         MIK.MIK_SA_ITEM_STG_IN.SUBCLASS%TYPE,
+	p_qty              MIK.MIK_SA_ITEM_STG_IN.QTY%TYPE,
+	p_unit_retail      MIK.MIK_SA_ITEM_STG_IN.UNIT_RETAIL%TYPE,
+	p_selling_uom      MIK.MIK_SA_ITEM_STG_IN.SELLING_UOM%TYPE,
+	p_override_reason  MIK.MIK_SA_ITEM_STG_IN.OVERRIDE_REASON%TYPE,
+	p_orig_unit_retail MIK.MIK_SA_ITEM_STG_IN.ORIG_UNIT_RETAIL%TYPE,
+	p_tax_ind		   MIK.MIK_SA_ITEM_STG_IN.TAX_IND%TYPE,
+	p_CancelFlag	   Varchar2,
+	p_item_swp_ind     MIK.MIK_SA_ITEM_STG_IN.ITEM_SWIPED_IND%TYPE,
+	p_cw_ind	       MIK.MIK_SA_ITEM_STG_IN.CATCHWEIGHT_IND%TYPE,
+	p_ds_ind           MIK.MIK_SA_ITEM_STG_IN.DROP_SHIP_IND%TYPE,
+	p_ret_reason_code  MIK.MIK_SA_ITEM_STG_IN.RETURN_REASON_CODE%TYPE,
+	p_org_tran		   MIK.MIK_SA_ITEM_STG_IN.ORIG_TRAN_DETAIL%TYPE,
+	p_ref_no5          MIK.MIK_SA_ITEM_STG_IN.REF_NO5%TYPE,
+	p_mgrovrd          MIK.MIK_SA_ITEM_STG_IN.MGR_ID%TYPE,
+	p_cfrm_order       MIK.MIK_SA_ITEM_STG_IN.CFRM_ID%TYPE,
+	p_ref_no7          MIK.MIK_SA_ITEM_STG_IN.REF_NO7%TYPE,
+	p_ref_no6          MIK.MIK_SA_ITEM_STG_IN.REF_NO6%TYPE,
+	p_ref_no8          MIK.MIK_SA_ITEM_STG_IN.REF_NO8%TYPE,
+	p_link_item_no     MIK.MIK_SA_ITEM_STG_IN.MEDIA_ID%TYPE,
+	p_pos_item_seq_no  MIK.MIK_SA_ITEM_STG_IN.POS_ITEM_SEQ_NO%TYPE,
+	p_non_merch_item   MIK.MIK_SA_ITEM_STG_IN.NON_MERCH_ITEM%TYPE
+	) 
+AS
+BEGIN
+insert INTO MIK.MIK_SA_ITEM_STG_IN
+(STG_ID,
+STORE,
+ITEM_SEQ_NO,
+ITEM_STATUS,
+ITEM_TYPE,
+ITEM,
+REF_ITEM,
+NON_MERCH_ITEM,
+VOUCHER_NO,
+DEPT,
+CLASS,
+SUBCLASS,
+QTY,
+UNIT_RETAIL,
+SELLING_UOM,
+OVERRIDE_REASON,
+ORIG_UNIT_RETAIL,
+STANDARD_ORIG_UNIT_RETAIL,
+TAX_IND,
+ITEM_SWIPED_IND,
+DROP_SHIP_IND,
+WASTE_TYPE,
+WASTE_PCT,
+PUMP,
+RETURN_REASON_CODE,
+SALESPERSON,
+EXPIRATION_DATE,
+STANDARD_QTY,
+STANDARD_UNIT_RETAIL,
+STANDARD_UOM,
+REF_NO5,
+REF_NO6,
+REF_NO7,
+REF_NO8,
+UOM_QUANTITY,
+CATCHWEIGHT_IND,
+SELLING_ITEM,
+CUSTOMER_ORDER_LINE_NO,
+MEDIA_ID,
+ORIG_TRAN_DETAIL,
+GC_ACTIVATION_FEE,
+ACTIVATION_FEE,
+CFRM_ID,
+MGR_ID,
+POS_ITEM_SEQ_NO)
+VALUES
+(
+p_stg_id,                          --STG_ID,
+p_store,                            --STORE,
+p_item_seq_no,                           --ITEM_SEQ_NO,
+p_item_status,                           --ITEM_STATUS,
+p_item_type,                           --ITEM_TYPE,
+p_item,                            --ITEM,
+P_ref_item,                            --REF_ITEM,
+p_non_merch_item,                         --NON_MERCH_ITEM,
+null,                          --VOUCHER_NO -- always null for B&M stores,
+p_dept,                            --DEPT,
+p_class,                            --CLASS,
+p_subclass,                            --SUBCLASS,
+p_qty,                            --QTY,
+p_unit_retail,                             --UNIT_RETAIL,
+p_selling_uom,                            --SELLING_UOM,
+p_override_reason,                            --OVERRIDE_REASON,
+p_orig_unit_retail,                            --ORIG_UNIT_RETAIL,
+p_orig_unit_retail,                            --STANDARD_ORIG_UNIT_RETAIL,
+p_tax_ind,                            --TAX_IND,
+p_item_swp_ind,                            --ITEM_SWIPED_IND,
+p_ds_ind,                           --DROP_SHIP_IND, -- always N in resa
+null,                            --WASTE_TYPE, -- always null in resa
+null,                            --WASTE_PCT,-- always null in resa
+null,                            --PUMP,-- always null in resa
+p_ret_reason_code,                            --RETURN_REASON_CODE,
+null,                            --SALESPERSON,-- always null in resa
+null,                            --EXPIRATION_DATE,-- always null in resa
+p_qty,                            --STANDARD_QTY,
+p_unit_retail,                            --STANDARD_UNIT_RETAIL,
+p_selling_uom,                            --STANDARD_UOM,
+p_ref_no5,                            --REF_NO5,
+p_ref_no6,                            --REF_NO6,
+p_ref_no7,                            --REF_NO7,
+p_ref_no8,                            --REF_NO8,
+p_qty,                            --UOM_QUANTITY,
+p_cw_ind,                            --CATCHWEIGHT_IND,-- always N in resa
+null,                            --SELLING_ITEM,-- always null in resa
+null,                            --CUSTOMER_ORDER_LINE_NO,-- always null in resa
+p_link_item_no,                            --MEDIA_ID,-- always null in resa
+p_org_tran,                            --ORIG_TRAN_DETAIL,
+null,                            --GC_ACTIVATION_FEE,
+null,                            --ACTIVATION_FEE
+p_cfrm_order,                    --CFRM_ID
+p_mgrovrd,                        --MGR_ID
+p_pos_item_seq_no
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_ITEM_STG_IN table failed. stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_ITEM_STG_IN_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_ITEM_STG_IN_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_TRAN_ITEM_IN_ATTRIB table*/
+
+PROCEDURE PROC_SALES_MIK_SA_TRAN_ITEM_IN_ATTRIB_INS
+(
+ p_stg_id        MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB.STG_ID%TYPE,
+ p_store         MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB.STORE%TYPE,
+ p_day           MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB.DAY%TYPE,
+ p_item_seq_no   MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB.ITEM_SEQ_NO%TYPE,
+ p_attr_seq_no   MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB.ATTRIB_SEQ_NO%TYPE,
+ p_attr_type     MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB.ATTRIB_TYPE%TYPE,
+ p_attr_val      MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB.ATTRIB_VALUE%TYPE
+)
+AS
+BEGIN
+INSERT INTO MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB
+(
+STORE        , 
+DAY          , 
+STG_ID  , 
+ITEM_SEQ_NO  ,
+ATTRIB_SEQ_NO, 
+ATTRIB_TYPE  , 
+ATTRIB_VALUE , 
+ERROR_IND    
+)
+VALUES
+(
+p_store,           -- STORE        
+p_day,            --  DAY          
+p_stg_id,         --  STG_ID 
+p_item_seq_no,    -- ITEM_SEQ_NO
+p_attr_seq_no,    --  ATTRIB_SEQ_NO
+p_attr_type,       -- ATTRIB_TYPE  
+p_attr_val,        -- ATTRIB_VALUE 
+'N'               --  ERROR_IND    
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TRAN_ITEM_IN_ATTRIB table failed. p_stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TRAN_ITEM_IN_ATTRIB_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TRAN_ITEM_IN_ATTRIB_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_DISC_STG_IN table*/
+PROCEDURE PROC_SALES_MIK_SA_DISC_STG_IN_INS
+  (
+    p_stg_Id            MIK.MIK_SA_DISC_STG_IN.STG_ID%TYPE,
+	p_store             MIK.MIK_SA_DISC_STG_IN.STORE%TYPE,
+	p_item_seq_no       MIK.MIK_SA_DISC_STG_IN.ITEM_SEQ_NO%TYPE,
+	p_disc_Seq_Num      MIK.MIK_SA_DISC_STG_IN.DISCOUNT_SEQ_NO%TYPE,
+	p_disc_Amount       MIK.MIK_SA_DISC_STG_IN.UNIT_DISCOUNT_AMT%TYPE,
+	p_promo_id          MIK.MIK_SA_DISC_STG_IN.PROMOTION%TYPE,
+	p_disc_qty          MIK.MIK_SA_DISC_STG_IN.QTY%TYPE,
+	p_disc_type         MIK.MIK_SA_DISC_STG_IN.DISC_TYPE%TYPE,
+	p_voucher_id        MIK.MIK_SA_DISC_STG_IN.COUPON_NO%TYPE,
+	p_ref_no14	        MIK.MIK_SA_DISC_STG_IN.REF_NO14%TYPE,
+	p_ref_no13          MIK.MIK_SA_DISC_STG_IN.REF_NO13%TYPE,
+	p_rms_promo_type    MIK.MIK_SA_DISC_STG_IN.RMS_PROMO_TYPE%TYPE,
+	p_ref_no15          MIK.MIK_SA_DISC_STG_IN.REF_NO15%TYPE,
+	p_pos_item_seq_no   MIK.MIK_SA_DISC_STG_IN.POS_ITEM_SEQ_NO%TYPE
+  )
+AS
+BEGIN
+insert into MIK.MIK_SA_DISC_STG_IN 
+(
+STG_ID,                
+STORE,                 
+ITEM_SEQ_NO,           
+DISCOUNT_SEQ_NO,       
+RMS_PROMO_TYPE,        
+PROMOTION,             
+DISC_TYPE,             
+COUPON_NO,            
+COUPON_REF_NO,         
+QTY,                   
+UNIT_DISCOUNT_AMT,     
+STANDARD_QTY,          
+STANDARD_UNIT_DISC_AMT,
+REF_NO13,              
+REF_NO14,              
+REF_NO15,              
+REF_NO16,              
+ERROR_IND,             
+UOM_QUANTITY,          
+CATCHWEIGHT_IND,       
+PROMO_COMP,
+POS_ITEM_SEQ_NO
+)
+VALUES
+(
+p_stg_Id,         --STG_ID
+p_store,          --STORE                 
+p_item_seq_no,    --ITEM_SEQ_NO           
+p_disc_Seq_Num,   --DISCOUNT_SEQ_NO       
+p_rms_promo_type,             --RMS_PROMO_TYPE        
+p_promo_id,             --PROMOTION             
+p_disc_type,             --DISC_TYPE             
+p_voucher_id,             --COUPON_NO    -- always null in RESA        
+null,             --COUPON_REF_NO -- always null in RESA       
+p_disc_qty,             --QTY                   
+p_disc_Amount,    --UNIT_DISCOUNT_AMT     
+null,             --STANDARD_QTY          
+null,             --STANDARD_UNIT_DISC_AMT
+p_ref_no13,             --REF_NO13      -- DISCOUNT PERCENT        
+null,             --REF_NO14       -- always null in RESA        
+p_ref_no15,             --REF_NO15       --    promotion|0   
+null,             --REF_NO16         -- always null in RESA      
+null,             --ERROR_IND             
+p_disc_qty,             --UOM_QUANTITY          
+null,             --CATCHWEIGHT_IND       -- always N in RESA
+null,              --PROMO_COMP   -- always null in RESA
+p_pos_item_seq_no
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_DISC_STG_IN table failed. stg_id = ' || p_stg_id ||'. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_DISC_STG_IN_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_DISC_STG_IN_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_TRAN_DISC_IN_ATTRIB table*/
+
+PROCEDURE PROC_SALES_MIK_SA_TRAN_DISC_IN_ATTRIB_INS
+(
+ p_stg_id        MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.STG_ID%TYPE,
+ p_store         MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.STORE%TYPE,
+ p_day           MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.DAY%TYPE,
+ p_item_seq_no   MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.ITEM_SEQ_NO%TYPE,
+ p_disc_seq_no   MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.DISCOUNT_SEQ_NO%TYPE,
+ p_attr_seq_no   MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.ATTRIB_SEQ_NO%TYPE,
+ p_attr_type     MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.ATTRIB_TYPE%TYPE,
+ p_attr_val      MIK.MIK_SA_TRAN_DISC_IN_ATTRIB.ATTRIB_VALUE%TYPE
+)
+AS
+BEGIN
+INSERT INTO MIK.MIK_SA_TRAN_DISC_IN_ATTRIB
+(
+STORE        , 
+DAY          , 
+STG_ID  , 
+ITEM_SEQ_NO  ,
+DISCOUNT_SEQ_NO  ,
+ATTRIB_SEQ_NO, 
+ATTRIB_TYPE  , 
+ATTRIB_VALUE , 
+ERROR_IND    
+)
+VALUES
+(
+p_store,           -- STORE        
+p_day,            --  DAY          
+p_stg_id,         --  STG_ID 
+p_item_seq_no,    -- ITEM_SEQ_NO
+p_disc_seq_no,    --DISCOUNT_SEQ_NO
+p_attr_seq_no,    --  ATTRIB_SEQ_NO
+p_attr_type,       -- ATTRIB_TYPE  
+p_attr_val,        -- ATTRIB_VALUE 
+'N'               --  ERROR_IND    
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TRAN_DISC_IN_ATTRIB table failed. p_stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TRAN_DISC_IN_ATTRIB_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TRAN_DISC_IN_ATTRIB_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_TAX_STG_IN table*/
+PROCEDURE PROC_SALES_MIK_SA_TAX_STG_IN_INS
+  (
+    p_stg_Id 			  MIK.MIK_SA_TAX_STG_IN.STG_ID%TYPE,
+	p_store				  MIK.MIK_SA_TAX_STG_IN.STORE%TYPE,
+	p_item_seq_no         MIK.MIK_SA_TAX_STG_IN.ITEM_SEQ_NO%TYPE,	
+    p_Tax_Seq_no          MIK.MIK_SA_TAX_STG_IN.TAX_SEQ_NO%TYPE,      
+    p_Tax_Amount          MIK.MIK_SA_TAX_STG_IN.TAX_AMT%TYPE,         
+    p_tax_code            MIK.MIK_SA_TAX_STG_IN.TAX_CODE%TYPE,
+	p_ref_no17            MIK.MIK_SA_TAX_STG_IN.REF_NO17%TYPE,
+	p_pos_item_seq_no     MIK.MIK_SA_TAX_STG_IN.POS_ITEM_SEQ_NO%TYPE
+	)
+AS
+BEGIN
+insert into MIK.MIK_SA_TAX_STG_IN
+(
+STG_ID,     
+STORE,      
+ITEM_SEQ_NO,
+TAX_CODE,   
+TAX_SEQ_NO, 
+TAX_AMT,    
+REF_NO17,   
+REF_NO18,   
+REF_NO19,  
+REF_NO20,
+POS_ITEM_SEQ_NO
+)
+VALUES
+(
+p_stg_Id,         --STG_ID
+p_store,          --STORE       
+p_item_seq_no,    --ITEM_SEQ_NO 
+p_tax_code,             --TAX_CODE  
+p_tax_seq_no,     --TAX_SEQ_NO
+p_Tax_Amount,     --TAX_AMT   
+p_ref_no17,             --REF_NO17   --TAX BUCKET
+null,             --REF_NO18  -- always null in RESA 
+null,             --REF_NO19  -- tax_amt tax bucket wise
+null,              --REF_NO20
+p_pos_item_seq_no
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TAX_STG_IN table failed. stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TAX_STG_IN_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TAX_STG_IN_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_TRAN_TAX_IN_ATTRIB table*/
+
+PROCEDURE PROC_SALES_MIK_SA_TRAN_TAX_IN_ATTRIB_INS
+(
+ p_stg_id        MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.STG_ID%TYPE,
+ p_store         MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.STORE%TYPE,
+ p_day           MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.DAY%TYPE,
+ p_item_seq_no   MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.DAY%TYPE,
+ p_tax_seq_no    MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.ITEM_SEQ_NO%TYPE,
+ p_attr_seq_no   MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.ATTRIB_SEQ_NO%TYPE,
+ p_attr_type     MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.ATTRIB_TYPE%TYPE,
+ p_attr_val      MIK.MIK_SA_TRAN_TAX_IN_ATTRIB.ATTRIB_VALUE%TYPE
+)
+AS
+BEGIN
+INSERT INTO MIK.MIK_SA_TRAN_TAX_IN_ATTRIB
+(
+STORE        , 
+DAY          , 
+STG_ID  ,
+ITEM_SEQ_NO  , 
+TAX_SEQ_NO  ,
+ATTRIB_SEQ_NO, 
+ATTRIB_TYPE  , 
+ATTRIB_VALUE , 
+ERROR_IND    
+)
+VALUES
+(
+p_store,           -- STORE        
+p_day,            --  DAY          
+p_stg_id,         --  STG_ID 
+p_item_seq_no,    --ITEM_SEQ_NO  ,
+p_tax_seq_no,    --DISC_SEQ_NO
+p_attr_seq_no,    --  ATTRIB_SEQ_NO
+p_attr_type,       -- ATTRIB_TYPE  
+p_attr_val,        -- ATTRIB_VALUE 
+'N'               --  ERROR_IND    
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TRAN_TAX_IN_ATTRIB table failed. p_stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TRAN_TAX_IN_ATTRIB_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TRAN_TAX_IN_ATTRIB_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_TENDER_STG_IN table*/
+PROCEDURE PROC_SALES_MIK_SA_TENDER_STG_IN_INS
+  (
+    p_stg_Id                MIK.MIK_SA_TENDER_STG_IN.STG_ID%TYPE,
+	p_store 				MIK.MIK_SA_TENDER_STG_IN.STORE%TYPE,
+	p_tender_seq_no         MIK.MIK_SA_TENDER_STG_IN.TENDER_SEQ_NO%TYPE,
+	p_tender_amt		    MIK.MIK_SA_TENDER_STG_IN.TENDER_AMT%TYPE,
+	p_cardtoken	            MIK.MIK_SA_TENDER_STG_IN.CARD_TOKEN%TYPE,
+	p_token_exp				MIK.MIK_SA_TENDER_STG_IN.CC_EXP_DATE%TYPE,
+	p_card_hash				MIK.MIK_SA_TENDER_STG_IN.CARD_HASH%TYPE,
+	p_auth_cc				MIK.MIK_SA_TENDER_STG_IN.CC_AUTH_NO%TYPE,
+	p_cc_no					MIK.MIK_SA_TENDER_STG_IN.CC_NO%TYPE,
+	p_payment_method 		MIK.MIK_SA_TENDER_STG_IN.TENDER_TYPE_ID%TYPE,
+	p_payment_type 			MIK.MIK_SA_TENDER_STG_IN.TENDER_TYPE_GROUP%TYPE,
+	p_cc_auth_src		    MIK.MIK_SA_TENDER_STG_IN.CC_AUTH_SRC%TYPE,
+	p_cc_ent_mod            MIK.MIK_SA_TENDER_STG_IN.CC_ENTRY_MODE%TYPE,
+	p_cc_cardholder_ver     MIK.MIK_SA_TENDER_STG_IN.CC_CARDHOLDER_VERF%TYPE,
+	p_cc_term_id            MIK.MIK_SA_TENDER_STG_IN.CC_TERM_ID%TYPE,
+	p_cc_spec_cond          MIK.MIK_SA_TENDER_STG_IN.CC_SPEC_COND%TYPE,
+	p_ref_no11              MIK.MIK_SA_TENDER_STG_IN.REF_NO11%TYPE,
+	p_ref_no12              MIK.MIK_SA_TENDER_STG_IN.REF_NO12%TYPE,
+	p_card_type             MIK.MIK_SA_TENDER_STG_IN.CARD_TYPE%TYPE
+	)
+AS
+BEGIN
+insert into MIK.MIK_SA_TENDER_STG_IN
+(
+STG_ID,            
+STORE,             
+TENDER_SEQ_NO,     
+TENDER_TYPE_GROUP, 
+TENDER_TYPE_ID,    
+TENDER_AMT,        
+CC_NO,             
+CARD_TOKEN,        
+CC_EXP_DATE,       
+CC_AUTH_NO,        
+CC_AUTH_SRC,       
+CC_ENTRY_MODE,     
+CC_CARDHOLDER_VERF,
+CC_TERM_ID,        
+CC_SPEC_COND,      
+VOUCHER_NO,        
+COUPON_NO,         
+COUPON_REF_NO,     
+REF_NO9,           
+REF_NO10,         
+REF_NO11,          
+REF_NO12,
+CARD_HASH,
+CARD_TYPE
+)
+VALUES
+(
+p_stg_Id,         --STG_ID
+p_store,          --STORE 
+p_tender_seq_no,  --TENDER_SEQ_NO     
+p_payment_type,             --TENDER_TYPE_GROUP
+p_payment_method,             --TENDER_TYPE_ID    
+p_tender_amt,  --TENDER_AMT        
+p_cc_no,             --CC_NO             
+p_cardtoken,     --CARD_TOKEN        
+P_token_exp,             --CC_EXP_DATE       
+p_auth_cc,             --CC_AUTH_NO        
+p_cc_auth_src,             --CC_AUTH_SRC    
+p_cc_ent_mod,             --CC_ENTRY_MODE   
+p_cc_cardholder_ver,             --CC_CARDHOLDER_VERF  
+p_cc_term_id,             --CC_TERM_ID         
+p_cc_spec_cond,             --CC_SPEC_COND     
+null,             --VOUCHER_NO      --always null  
+p_ref_no12,             --COUPON_NO      --GC Voucher number   
+'1111',             --COUPON_REF_NO      --always 1111
+null,             --REF_NO9            --tend oob message
+null,             --REF_NO10        --always null
+p_ref_no11,             --REF_NO11          
+p_ref_no12,              --REF_NO12 -- GC Voucher number
+p_card_hash,       --CARD_HASH
+p_card_type        --CARD_TYPE
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TENDER_STG_IN table failed. stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TENDER_STG_IN_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TENDER_STG_IN_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_TRAN_TENDER_IN_ATTRIB table*/
+
+PROCEDURE PROC_SALES_MIK_SA_TRAN_TENDER_IN_ATTRIB_INS
+(
+ p_stg_id        MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB.STG_ID%TYPE,
+ p_store         MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB.STORE%TYPE,
+ p_day           MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB.DAY%TYPE,
+ p_tend_seq_no    MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB.TENDER_SEQ_NO%TYPE,
+ p_attr_seq_no   MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB.ATTRIB_SEQ_NO%TYPE,
+ p_attr_type     MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB.ATTRIB_TYPE%TYPE,
+ p_attr_val      MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB.ATTRIB_VALUE%TYPE
+)
+AS
+BEGIN
+INSERT INTO MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB
+(
+STORE        , 
+DAY          , 
+STG_ID  , 
+TENDER_SEQ_NO  ,
+ATTRIB_SEQ_NO, 
+ATTRIB_TYPE  , 
+ATTRIB_VALUE , 
+ERROR_IND    
+)
+VALUES
+(
+p_store,           -- STORE        
+p_day,            --  DAY          
+p_stg_id,         --  STG_ID 
+p_tend_seq_no,    --TENDER_SEQ_NO
+p_attr_seq_no,    --  ATTRIB_SEQ_NO
+p_attr_type,       -- ATTRIB_TYPE  
+p_attr_val,        -- ATTRIB_VALUE 
+'N'               --  ERROR_IND    
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TRAN_TENDER_IN_ATTRIB table failed. p_stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TRAN_TENDER_IN_ATTRIB_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TRAN_TENDER_IN_ATTRIB_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_CUSTOMER_STG_IN table*/
+PROCEDURE PROC_SALES_MIK_SA_CUSTOMER_STG_IN_INS
+  (
+    p_stg_Id           MIK.MIK_SA_CUSTOMER_STG_IN.STG_ID%TYPE,
+	p_store 			MIK.MIK_SA_CUSTOMER_STG_IN.STORE%TYPE,
+	p_cust_seq_no	   MIK.MIK_SA_CUSTOMER_STG_IN.CUST_SEQ_NO%TYPE,
+	p_CustName        MIK.MIK_SA_CUSTOMER_STG_IN.NAME%TYPE,
+	p_Address          MIK.MIK_SA_CUSTOMER_STG_IN.ADDR1%TYPE,
+	p_TelephoneNumber  MIK.MIK_SA_CUSTOMER_STG_IN.HOME_PHONE%TYPE,
+	p_Mobile           MIK.MIK_SA_CUSTOMER_STG_IN.WORK_PHONE%TYPE,
+	p_EMailAddress     MIK.MIK_SA_CUSTOMER_STG_IN.E_MAIL%TYPE,
+    P_cust_id		   MIK.MIK_SA_CUSTOMER_STG_IN.CUST_ID%TYPE,
+	p_cust_id_type     MIK.MIK_SA_CUSTOMER_STG_IN.CUST_ID_TYPE%TYPE
+  )
+AS
+BEGIN
+insert into  MIK.MIK_SA_CUSTOMER_STG_IN
+(
+STG_ID,       
+STORE,        
+CUST_SEQ_NO,  
+CUST_ID,      
+CUST_ID_TYPE, 
+NAME,         
+ADDR1,        
+ADDR2,        
+CITY,        
+STATE,        
+POSTAL_CODE,  
+COUNTRY,      
+HOME_PHONE,   
+WORK_PHONE,   
+E_MAIL,       
+BIRTHDATE 
+)
+VALUES
+(
+p_stg_Id,          --STG_ID
+p_store,           --STORE
+p_cust_seq_no,     --CUST_SEQ_NO 
+P_cust_id,              --CUST_ID     
+p_cust_id_type,              --CUST_ID_TYPE
+p_CustName,       --NAME        
+p_Address,         --ADDR1       
+null,              --ADDR2       
+null,              --CITY        
+null,              --STATE       
+null,              --POSTAL_CODE 
+null,              --COUNTRY     
+p_TelephoneNumber, --HOME_PHONE  
+p_Mobile,          --WORK_PHONE  
+p_EMailAddress,    --E_MAIL      
+null               --BIRTHDATE 
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_CUSTOMER_STG_IN table failed. stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_CUSTOMER_STG_IN_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_CUSTOMER_STG_IN_INS;
+
+/*Sub Procedure to Insert Data to MIK_SA_TRAN_CUSTOMER_IN_ATTRIB table*/
+
+PROCEDURE PROC_SALES_MIK_SA_TRAN_CUSTOMER_IN_ATTRIB_INS
+(
+ p_stg_id        MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB.STG_ID%TYPE,
+ p_store         MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB.STORE%TYPE,
+ p_day           MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB.DAY%TYPE,
+ p_attr_seq_no   MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB.ATTRIB_SEQ_NO%TYPE,
+ p_attr_type     MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB.ATTRIB_TYPE%TYPE,
+ p_attr_val      MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB.ATTRIB_VALUE%TYPE
+)
+AS
+BEGIN
+INSERT INTO MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB
+(
+STORE        , 
+DAY          , 
+STG_ID       , 
+ATTRIB_SEQ_NO, 
+ATTRIB_TYPE  , 
+ATTRIB_VALUE , 
+ERROR_IND    
+)
+VALUES
+(
+p_store,           -- STORE        
+p_day,            --  DAY          
+p_stg_id,         --  STG_ID 
+p_attr_seq_no,    --  ATTRIB_SEQ_NO
+p_attr_type,       -- ATTRIB_TYPE  
+p_attr_val,        -- ATTRIB_VALUE 
+'N'               --  ERROR_IND    
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_SA_TRAN_CUSTOMER_IN_ATTRIB table failed. p_stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_SA_TRAN_CUSTOMER_IN_ATTRIB_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_SA_TRAN_CUSTOMER_IN_ATTRIB_INS;
+
+/*Sub Procedure to Insert Data to MIK_EXPORT_STG_IN table*/
+PROCEDURE PROC_SALES_MIK_EXPORT_STG_IN_INS
+
+(
+p_stg_Id           MIK.MIK_EXPORT_STG_IN.STG_ID%TYPE,  
+p_store 	       MIK.MIK_EXPORT_STG_IN.STORE%TYPE,
+p_day              MIK.MIK_EXPORT_STG_IN.BUSINESS_DATE%TYPE,
+p_sys_code         MIK.MIK_EXPORT_STG_IN.SYSTEM_CODE%TYPE,
+p_exp_status       MIK.MIK_EXPORT_STG_IN.STATUS%TYPE,
+p_tran_no          MIK.MIK_EXPORT_STG_IN.STATUS%TYPE,
+p_register         MIK.MIK_EXPORT_STG_IN.STATUS%TYPE
+
+) AS
+BEGIN
+INSERT INTO  MIK.MIK_EXPORT_STG_IN
+(
+STORE,
+BUSINESS_DATE,
+TRAN_NO,
+REGISTER,
+STG_ID,
+SYSTEM_CODE,
+EXP_DATETIME,
+STATUS
+)
+VALUES
+(
+p_store,
+p_day,
+p_tran_no,
+p_register,
+p_stg_Id,
+p_sys_code,
+NULL,
+p_exp_status
+);
+EXCEPTION
+WHEN OTHERS THEN
+  l_error_code := esb_api_codes.unknown_error;
+  l_error_mesg := 'INSERT into MIK.MIK_EXPORT_STG_IN table failed. stg_id = ' || p_stg_id || '. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => NULL,
+    p_stg_id => p_stg_id,
+    p_message_id => NULL,
+    p_procedure_name => 'PROC_SALES_MIK_EXPORT_STG_IN_INS',
+    p_poslog_data => NULL
+  );
+  RAISE PROGRAM_ERROR;
+END PROC_SALES_MIK_EXPORT_STG_IN_INS;
+
+/*Sub Procedure to Insert Data to tax table for voided item lines table*/
+/*PROCEDURE PROC_SALES_MIK_SA_TAX_STG_IN_VOID_INS
+(
+ p_stg_id        MIK.MIK_SA_TAX_STG_IN.STG_ID%TYPE,
+ p_store         MIK.MIK_SA_TAX_STG_IN.STORE%TYPE,
+ p_item_seq_no   MIK.MIK_SA_TAX_STG_IN.ITEM_SEQ_NO%TYPE,
+ p_tax_code      MIK.MIK_SA_TAX_STG_IN.TAX_CODE%TYPE,
+ p_tax_seq_no    MIK.MIK_SA_TAX_STG_IN.TAX_SEQ_NO%TYPE,
+ p_tax_amt       MIK.MIK_SA_TAX_STG_IN.TAX_AMT%TYPE,
+ p_ref_no17      MIK.MIK_SA_TAX_STG_IN.REF_NO17%TYPE,
+ p_ref_no18      MIK.MIK_SA_TAX_STG_IN.REF_NO18%TYPE,
+ p_ref_no19      MIK.MIK_SA_TAX_STG_IN.REF_NO19%TYPE,
+ p_ref_no20      MIK.MIK_SA_TAX_STG_IN.REF_NO20%TYPE,
+)
+AS
+BEGIN
+INSERT INTO MIK.MIK_SA_TAX_STG_IN
+(
+STG_ID, 
+STORE, 
+ITEM_SEQ_NO, 
+TAX_CODE, 
+TAX_SEQ_NO, 
+TAX_AMT, 
+REF_NO17, 
+REF_NO18, 
+REF_NO19, 
+REF_NO20
+)
+VALUES
+(
+p_stg_id,     
+p_store,      
+p_item_seq_no,
+p_tax_code,   
+p_tax_seq_no, 
+p_tax_amt,    
+p_ref_no17,   
+p_ref_no18,   
+p_ref_no19,   
+p_ref_no20   
+);
+END PROC_SALES_MIK_SA_TRAN_CUSTOMER_IN_ATTRIB_INS;*/
+
+PROCEDURE import_omni_sales_data (
+  O_STATUS_CODE OUT VARCHAR2,
+  O_STATUS_MSG  OUT VARCHAR2,
+  P_SOURCE      IN  VARCHAR2,
+  P_POSLOG      IN  CLOB,
+  P_PUBLISH_TIME IN TIMESTAMP,
+  P_QUEUE_NAME  IN  VARCHAR2,
+  P_DOMAIN      IN  VARCHAR2,
+  P_MESSAGE_ID  IN  VARCHAR2,
+  P_ACTION      IN  VARCHAR2,
+  P_TRAN_OBJ    IN  TRANSACTION_OBJECT
+) 
+AS
+
+ v_tran_type_code               VARCHAR2(10);
+ v_tran_type 			        VARCHAR2(50);
+ v_sub_tran_type		        VARCHAR2(50);
+ v_type_code                    VARCHAR2(50);
+ v_TrainingModeFlag             VARCHAR2(50);
+ v_UnitID                       VARCHAR2(50);
+ v_WorkstationID                VARCHAR2(50);
+ v_tran_num                     VARCHAR2(50);
+ v_TransactionID                VARCHAR2(50);
+ v_OperatorID                   VARCHAR2(50);
+ v_Currency                     VARCHAR2(50);
+ v_TillID                       VARCHAR2(50);
+ v_BusinessDayDate              VARCHAR2(50);
+ v_BeginDateTime                DATE;
+ v_EndDateTime                  DATE;
+ v_TransactionStatus            VARCHAR2(50);
+ v_total                        VARCHAR2(50); 
+ v_emp_disc_ind                 VARCHAR2(50);
+ v_CancelFlag                   VARCHAR2(50); 
+ v_Action                       VARCHAR2(50); 
+ v_ItemType                     VARCHAR2(50); 
+ v_ItemID		                VARCHAR2(50);
+ v_ref_item						VARCHAR2(50);
+ v_item_status					VARCHAR2(5);
+ v_dept                         VARCHAR2(50);
+ v_class						VARCHAR2(50);
+ v_subclass 					VARCHAR2(50);
+ v_Quantity		                VARCHAR2(50); 
+ v_NonDiscountableFlag          VARCHAR2(50); 
+ v_TaxExemptionEligibility      VARCHAR2(50); 
+ v_LoyaltyVoucherProratedAmount VARCHAR2(50); 
+ v_NetUnitPrice                 VARCHAR2(50);
+ v_override_reason 				VARCHAR2(50);
+ v_orig_unit_retail				VARCHAR2(50);
+ v_selling_uom				    VARCHAR2(50);
+ v_VendorID                     VARCHAR2(50); 
+ v_EntryMethod                  VARCHAR2(50); 
+ v_TaxChannel                   VARCHAR2(50);
+ v_Tax_Seq_Num					VARCHAR2(50);
+ v_TaxType                      VARCHAR2(50);
+ v_TaxSubType                   VARCHAR2(50);
+ v_TaxableAmount		        VARCHAR2(50);  
+ v_TaxablePercentage            VARCHAR2(50);
+ v_Tax_Amount                   VARCHAR2(50);
+ v_Tax_Percent                  VARCHAR2(50);
+ v_TaxRuleID                    VARCHAR2(50);
+ v_TaxGroupID                   VARCHAR2(50);
+ v_TaxJurisdictionID            VARCHAR2(50);
+ v_Tax_TypeCode                 VARCHAR2(50);
+ v_ProTaxClassCode              VARCHAR2(50);
+ v_PosTaxCode                   VARCHAR2(50);
+ v_TaxRateRuleID                VARCHAR2(50);
+ v_MethodCode                   VARCHAR2(50);
+ v_Disc_TypeCode	            VARCHAR2(50);
+ v_disc_Amount                  VARCHAR2(50);
+ v_disc_amount1                 VARCHAR2(50);
+ v_disc_Percent                 VARCHAR2(50);
+ l_disc_percent                 VARCHAR2(50);
+ v_disc_Seq_Num                 VARCHAR2(50);
+ v_disc_qty					    NUMBER(12,4);
+ v_promo_id                     VARCHAR2(50);
+ v_Reason                       VARCHAR2(50);
+ v_TotalAmount                  VARCHAR2(50);
+ v_CustomerStatus               VARCHAR2(50);
+ v_AccountType	                VARCHAR2(50);
+ v_FirstName                    VARCHAR2(50);
+ v_LastName                     VARCHAR2(50);
+ v_Address                      VARCHAR2(50);
+ v_cust_seq_no				    VARCHAR2(50);
+ v_TelephoneNumber              VARCHAR2(50);
+ v_Mobile                       VARCHAR2(50);
+ v_EMailAddress                 VARCHAR2(100);
+ v_Tender_seq_no                VARCHAR2(50);
+ v_TenderType                   VARCHAR2(50);
+ v_SubTenderType                VARCHAR2(50);
+ v_Tend_TypeCode                VARCHAR2(50);
+ v_Tender_Amount		        VARCHAR2(50);
+ v_AmountAppliedToBill          VARCHAR2(50);
+ v_AmountOverTendered           VARCHAR2(50);
+ v_TenderDescription            VARCHAR2(50);
+ v_SubTenderDescription         VARCHAR2(50);
+ v_PaymentIdentifier            VARCHAR2(50);
+ v_CustomerID				    VARCHAR2(50);
+ v_Card_token				    NUMBER(30);
+ v_token_exp				    NUMBER(10);
+ v_card_hash				    VARCHAR2(50);
+ v_auth_cc					    VARCHAR2(30);
+ v_cc_no					    VARCHAR2(30);
+ l_tend_seq  				    NUMBER := 0;
+ l_tax_seq                      NUMBER;
+ l_disc_Seq_Num                 NUMBER := 0;
+ v_tax_exempt				    VARCHAR2(20);
+ v_item_seq_no					NUMBER :=0;
+ l_cust_seq_no                  NUMBER :=0;
+ l_item_seq_no				    NUMBER :=0;
+ v_head_attr_seq_no             NUMBER :=0;
+ v_item_attr_seq_no             NUMBER :=0;
+ v_disc_attr_seq_no             NUMBER :=0;
+ v_tax_attr_seq_no              NUMBER :=0;
+ v_tender_attr_seq_no           NUMBER :=0;
+ v_cust_attr_seq_no             NUMBER :=0;
+ v_pos_item_seq_no              VARCHAR2(20);
+v_cust_name                     VARCHAR2(100);
+ L_BUFFER                       VARCHAR2(5000);
+ L_ERROR_FILE_NAME              VARCHAR2(2000);
+ L_DIRECTORY                    VARCHAR2(200);
+ v_tax_flag		                BOOLEAN;
+ v_tax_exp_flag                 BOOLEAN;
+ v_tax_ind                      VARCHAR2(5);
+ v_ret_reason_code              VARCHAR2(10);
+v_org_store                     VARCHAR2(10);
+v_org_tran_id                   VARCHAR2(50);
+v_org_tran_no                   VARCHAR2(10);
+v_org_reg                       VARCHAR2(10);
+v_org_date                      VARCHAR2(10);
+v_org_time                      VARCHAR2(10);
+v_voucher 						VARCHAR2(50);
+v_cfrm_order       				VARCHAR2(50);
+v_ref_no1						VARCHAR2(50);
+v_payment_method				VARCHAR2(50);
+v_payment_type					VARCHAR2(50);
+v_curr_bal                      VARCHAR2(10);
+v_loy_Id                        VARCHAR2(50);
+v_rwd_used                      VARCHAR2(10);
+v_bal_rwd                       VARCHAR2(10);
+v_total_type                    VARCHAR2(10);
+v_Tax_exp_ind 					VARCHAR2(10);
+v_cc_auth_src		            VARCHAR2(10);
+v_cc_ent_mod                    VARCHAR2(10);
+v_cc_cardholder_ver             VARCHAR2(10);
+v_cc_term_id                    VARCHAR2(10);
+v_cc_spec_cond                  VARCHAR2(10);
+v_approverid					VARCHAR2(20);
+v_ref_no12                      VARCHAR2(50);
+v_mgrovrd                       VARCHAR2(25);
+v_ref_no4                       VARCHAR2(50);
+v_sys_code                      VARCHAR2(10);
+v_exp_status                    VARCHAR2(1);
+v_loyalty_id                    VARCHAR2(25);
+v_card_type                     VARCHAR2(6);
+v_rms_promo_type                VARCHAR2(6);
+v_tran_link_Typecode            VARCHAR2(20);
+v_tran_link_TranID              VARCHAR2(50);
+v_tran_link_Reason              VARCHAR2(6);
+v_orig_tran                     VARCHAR2(10);
+v_orig_reg                      VARCHAR2(10);
+v_code                          VARCHAR2(10);
+v_bankdp                        VARCHAR2(100);
+v_bankdp_amt                    VARCHAR2(50);
+v_depositdate                   VARCHAR2(10);
+v_mgrid                         VARCHAR2(20);
+v_priceovrd                     VARCHAR2(100);
+l_org_tran                      VARCHAR2(100);
+l_cfrm_order                    VARCHAR2(50);
+l_voucher                       VARCHAR2(100);
+l_promo_id                      VARCHAR2(50);
+l_card_hash                     VARCHAR2(120);
+l_token                         VARCHAR2(120);
+v_disc_code                     VARCHAR2(5);
+v_tax_code                      VARCHAR2(10);
+v_tax_bucket                    VARCHAR2(5);
+v_ref_no15                      VARCHAR2(100);
+v_ref_no5                       VARCHAR2(30);
+v_ref_no6                       VARCHAR2(30);
+l_ItemType                      VARCHAR2(30);
+v_CardNumber	                VARCHAR2(50);
+v_ReturnCardNumber              VARCHAR2(50);
+v_amount                        VARCHAR2(50);
+v_tender_control                CLOB;
+v_account_id                    VARCHAR2(50);
+v_link_item_no                  VARCHAR2(10);
+v_TotalTaxAmount                VARCHAR2(20);
+v_ext_extendContractId          VARCHAR2(100);
+v_ext_eMailAddress              VARCHAR2(100);
+v_ext_PlanSku                   VARCHAR2(20);
+v_ext_orderId                   VARCHAR2(100);
+v_ext_lineItemTransactionId     VARCHAR2(100);
+v_ext_transactionId             VARCHAR2(100);
+v_ext_skuid                     VARCHAR2(20);
+v_ext_purchasePrice             VARCHAR2(20);
+v_ext_warsku_price              VARCHAR2(20);
+v_ext_warsku                    VARCHAR2(20);
+v_ext_status                    VARCHAR2(20);
+v_Related_SequenceNumber        VARCHAR2(20);
+v_Related_TransactionID         VARCHAR2(100);
+v_Related_ItemID                VARCHAR2(20);
+v_Related_POSItemID             VARCHAR2(50);
+v_extwar_attrib                 VARCHAR2(200);
+v_war_org_unit_retail           VARCHAR2(20);
+v_Activation_Fee_Ind            VARCHAR2(2);
+v_ItemNotOnFileFlag             VARCHAR2(10);
+v_NOFSku                        VARCHAR2(30);
+v_UPCNOF                        VARCHAR2(30);
+v_indicat1                      VARCHAR2(30);
+v_tax_buc                       VARCHAR2(30);
+v_indicat0                      VARCHAR2(30);
+v_clearance_ind                 VARCHAR2(30);
+v_ref_no8                       VARCHAR2(30);
+v_plcc_app_date                 VARCHAR2(30);
+v_plcc_status_code              VARCHAR2(5);
+l_plcc                          VARCHAR2(200);
+v_accountnumber                 VARCHAR2(50);
+v_accountid                     VARCHAR2(50);
+v_returncode                    VARCHAR2(5);
+v_co_Item_Amount                VARCHAR2(20);
+v_co_Sku                        VARCHAR2(30);
+v_co_POSItemId                  VARCHAR2(30);
+l_ref_no5                       VARCHAR2(50);
+l_NetUnitPrice                  VARCHAR2(20);
+l_Quantity                      VARCHAR2(10);
+v_co_Accountnumber              VARCHAR2(50);
+v_co_Action                     VARCHAR2(50);
+v_co_Code                       VARCHAR2(50);
+v_co_SVATransactionID           VARCHAR2(50);
+v_co_AUTHCODE                   VARCHAR2(50);
+v_co_BALANCE                    VARCHAR2(50);
+v_co_TenderType                 VARCHAR2(50);
+v_co_Amount                     VARCHAR2(50);
+l_tender_amt                    VARCHAR2(50);
+v_day                           VARCHAR2(5);
+v_org_date1                     VARCHAR2(20);
+l_org_date1                     VARCHAR2(10);
+v_plcc_account_number           VARCHAR2(30);
+v_masked_cc_no                  VARCHAR2(30);
+v_BeginDatetimeoffset           VARCHAR2(30);
+v_EndDateTimeoffset             VARCHAR2(30);
+v_begin_sign                    VARCHAR2(10);
+v_begin_hours                   VARCHAR2(10);
+v_begin_mins                    VARCHAR2(10);
+v_end_sign                      VARCHAR2(10);
+v_end_hours                     VARCHAR2(10);
+v_end_mins                      VARCHAR2(10);
+v_org_ret_ordernumber	        VARCHAR2(50);
+v_org_ret_date                  VARCHAR2(20);
+v_org_ret_store                 VARCHAR2(10);
+v_org_ret_register              VARCHAR2(10);
+v_org_ret_tran_num              VARCHAR2(10);
+l_org_ret_ordernumber           VARCHAR2(50);
+v_tax_grp_name                  VARCHAR2(50);
+v_plcc_accountid				VARCHAR2(50);
+v_Bankingday					VARCHAR2(50);
+v_total_tax_amt					VARCHAR2(50);
+
+
+ BEGIN
+   L_ERROR_FILE_NAME := 'MIK_OMNI_SALES_IMP_LOG'|| '_' ||P_MESSAGE_ID|| '_' ||P_TRAN_OBJ.TransactionID|| '_' || TO_CHAR(sysdate,'YYYYMMDDHH24MI');
+ --  L_DIRECTORY       := 'OMNI_SALES_LOG'; 
+  --'OUT_DIR';--'ERROR_DIR'; 
+ L_DIRECTORY :='SALES_LOG';
+  /* Opening Error File */
+  g_omni_err_file_type := UTL_FILE.FOPEN(L_DIRECTORY, L_ERROR_FILE_NAME, 'w');
+  l_buffer        := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Main Procedure import_omni_sales_data Started for MESSAGE_ID:'||P_MESSAGE_ID;
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+l_TRANSACTION_OBJECT := P_TRAN_OBJ;
+
+  IF (P_MESSAGE_ID IS NULL) THEN
+    l_error_code   := esb_api_codes.validation_failure;
+    l_error_mesg   := 'Required value MessageId is Null';
+    RAISE validation_failure;
+  END IF;
+
+IF l_TRANSACTION_OBJECT IS NOT NULL  THEN
+	FOR TRAN_REC IN 1 .. 1 LOOP
+	v_stgId := MIK.MIK_SA_HEAD_IN_STG_ID_SEQUENCE.NEXTVAL;
+
+	                v_type_code         := l_TRANSACTION_OBJECT.TypeCode;
+					v_TrainingModeFlag  := l_TRANSACTION_OBJECT.TrainingModeFlag;
+					v_UnitID            := l_TRANSACTION_OBJECT.UnitID;
+					v_WorkstationID     := l_TRANSACTION_OBJECT.WorkstationID;
+					v_tran_num          := l_TRANSACTION_OBJECT.SequenceNumber;
+					v_TransactionID     := l_TRANSACTION_OBJECT.TransactionID;
+					v_OperatorID        := REGEXP_REPLACE(l_TRANSACTION_OBJECT.OperatorID, '[[:alpha:]]', '9');
+					v_Currency          := l_TRANSACTION_OBJECT.Currency;
+					v_TillID            := l_TRANSACTION_OBJECT.TillID;
+					v_BusinessDayDate   := TO_DATE(l_TRANSACTION_OBJECT.BusinessDayDate,'YYYY-MM-DD HH24:MI:SS');
+
+					v_BeginDatetimeoffset := l_TRANSACTION_OBJECT.BeginDatetimeoffset;
+					v_EndDatetimeoffset := l_TRANSACTION_OBJECT.EndDatetimeoffset;
+
+					v_begin_sign              := CASE WHEN SUBSTR(v_BeginDatetimeoffset, 1, 1) = '-' THEN -1 ELSE 1 END;
+                    v_begin_hours             := TO_NUMBER(SUBSTR(v_BeginDatetimeoffset, 2, 2));    
+                    v_begin_mins              := TO_NUMBER(SUBSTR(v_BeginDatetimeoffset, 5, 2));
+					v_end_sign              := CASE WHEN SUBSTR(v_EndDatetimeoffset, 1, 1) = '-' THEN -1 ELSE 1 END;
+                    v_end_hours             := TO_NUMBER(SUBSTR(v_EndDatetimeoffset, 2, 2));    
+                    v_end_mins              := TO_NUMBER(SUBSTR(v_EndDatetimeoffset, 5, 2));
+                    v_BeginDateTime     := TO_TIMESTAMP(l_TRANSACTION_object.BeginDateTime,'YYYY-MM-DD HH24:MI:SS')  + v_begin_sign * NUMTODSINTERVAL(v_begin_hours, 'HOUR') + v_begin_sign * NUMTODSINTERVAL(v_begin_mins, 'MINUTE');
+                    v_EndDateTime       := TO_TIMESTAMP(l_TRANSACTION_object.EndDateTime,'YYYY-MM-DD HH24:MI:SS')  + v_end_sign * NUMTODSINTERVAL(v_end_hours, 'HOUR') + v_end_sign * NUMTODSINTERVAL(v_end_mins, 'MINUTE');
+					v_amount            := l_TRANSACTION_OBJECT.Amount;
+					v_tender_control   := l_TRANSACTION_OBJECT.TenderControl;
+					v_Bankingday := TO_DATE(l_TRANSACTION_OBJECT.BankingDay,'YYYY-MM-DD HH24:MI:SS');
+
+    IF 	v_TransactionID like 'CT%' or (v_TransactionID like 'TC%' and v_type_code not in('Deposit','RegisterCashOut')) or v_TrainingModeFlag='true' THEN
+
+
+		l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_HEAD_STG_IN_INS Started for Control TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+					utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+					PROC_SALES_MIK_SA_HEAD_STG_IN_INS (p_stg_Id =>v_stgId ,
+													   p_store=>v_UnitID,
+													   p_business_date =>v_BusinessDayDate,
+													   p_tran_datetime =>v_EndDateTime,
+													   p_register=>v_WorkstationID,
+													   p_tran_no=>v_tran_num ,
+													   p_cashier=> case when v_OperatorID in ('System','EODUSER') then '999999' else v_OperatorID end,
+													   p_salesperson=>case when v_OperatorID in ('System','EODUSER') then '999999' else v_OperatorID end,
+													   p_tran_type=>'NOSALE',
+													   p_sub_tran_type=>'NOSALE',
+													   p_receipt_barcode=>v_TransactionID,
+													   p_value=>v_amount,
+													   p_ref_no1=>v_TransactionID,
+													   p_ref_no4=>case when v_TrainingModeFlag='true' then 'User Training Transaction'   when v_type_code='SafeSessionFinalise' then 'SafeSessionFinalise' when v_type_code='SafeDeclaration' then 'SafeDeclaration'  when v_type_code='RegisterSessionFinalise' then 'RegisterSessionFinalise'  when v_type_code='RegisterSessionDeclaration' then 'RegisterSessionDeclaration' else null   end,
+													   p_loyalty_id=>null,
+													   p_begin_time=>v_BeginDateTime,
+													   p_orig_tran=>null,
+													   p_orig_reg=>null,
+													   p_rounded_amount=>v_amount,
+													   p_tender_control =>v_tender_control,
+													   p_total_tax_amt =>null); 
+
+		l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_HEAD_STG_IN_INS Completed for Control TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+		utl_file.put_line(g_omni_err_file_type, l_buffer);
+        l_error_code := esb_api_codes.success;
+	ELSE
+	IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL IS NOT NULL    AND l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL.COUNT > 0 THEN
+		FOR custorder_rec IN 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL.COUNT LOOP
+
+			BEGIN
+
+			SELECT
+			   (CASE
+					WHEN MAX(CASE WHEN LIBT.Quantity > 0 THEN 1 ELSE 0 END) = 1 
+					THEN '1'
+					ELSE '0'
+				END) into v_tran_type_code
+			FROM TABLE(CAST(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL AS LineItem_OBJECT_TBL)) LIBT
+			where LIBT.CancelFlag='false';
+
+			 EXCEPTION
+            WHEN NO_DATA_FOUND THEN 
+              l_error_code := esb_api_codes.validation_failure;
+              l_error_mesg := 'No rows returned for v_tran_type_code for TransactionID = ' || l_TRANSACTION_OBJECT.TransactionID ||'. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+              RAISE validation_failure;
+			END;
+
+			BEGIN
+
+			SELECT 'INTDY','R' into v_sys_code,v_exp_status FROM DUAL;
+
+			END;
+
+
+					v_type_code         := l_TRANSACTION_OBJECT.TypeCode;
+					v_TrainingModeFlag  := l_TRANSACTION_OBJECT.TrainingModeFlag;
+					v_UnitID            := l_TRANSACTION_OBJECT.UnitID;
+					v_WorkstationID     := l_TRANSACTION_OBJECT.WorkstationID;
+					v_tran_num          := l_TRANSACTION_OBJECT.SequenceNumber;
+					v_TransactionID     := l_TRANSACTION_OBJECT.TransactionID;
+					v_OperatorID        := REGEXP_REPLACE(l_TRANSACTION_OBJECT.OperatorID, '[[:alpha:]]', '9');
+					v_Currency          := l_TRANSACTION_OBJECT.Currency;
+					v_TillID            := l_TRANSACTION_OBJECT.TillID;
+					v_plcc_app_date     := TO_CHAR(TO_DATE(l_TRANSACTION_OBJECT.BusinessDayDate,'YYYY-MM-DD HH24:MI:SS'),'YYMMDD');
+					v_day               := TO_CHAR(TO_DATE(l_TRANSACTION_OBJECT.BusinessDayDate,'YYYY-MM-DD HH24:MI:SS'),'DD');
+					v_BusinessDayDate   := TO_DATE(l_TRANSACTION_OBJECT.BusinessDayDate,'YYYY-MM-DD HH24:MI:SS');
+					v_Bankingday := TO_DATE(l_TRANSACTION_OBJECT.BankingDay,'YYYY-MM-DD HH24:MI:SS');
+					v_BeginDatetimeoffset := l_TRANSACTION_OBJECT.BeginDatetimeoffset;
+					v_EndDatetimeoffset := l_TRANSACTION_OBJECT.EndDatetimeoffset;
+
+					v_begin_sign              := CASE WHEN SUBSTR(v_BeginDatetimeoffset, 1, 1) = '-' THEN -1 ELSE 1 END;
+                    v_begin_hours             := TO_NUMBER(SUBSTR(v_BeginDatetimeoffset, 2, 2));    
+                    v_begin_mins              := TO_NUMBER(SUBSTR(v_BeginDatetimeoffset, 5, 2));
+					v_end_sign              := CASE WHEN SUBSTR(v_EndDatetimeoffset, 1, 1) = '-' THEN -1 ELSE 1 END;
+                    v_end_hours             := TO_NUMBER(SUBSTR(v_EndDatetimeoffset, 2, 2));    
+                    v_end_mins              := TO_NUMBER(SUBSTR(v_EndDatetimeoffset, 5, 2));
+                    v_BeginDateTime     := TO_TIMESTAMP(l_TRANSACTION_object.BeginDateTime,'YYYY-MM-DD HH24:MI:SS')  + v_begin_sign * NUMTODSINTERVAL(v_begin_hours, 'HOUR') + v_begin_sign * NUMTODSINTERVAL(v_begin_mins, 'MINUTE');
+                    v_EndDateTime       := TO_TIMESTAMP(l_TRANSACTION_object.EndDateTime,'YYYY-MM-DD HH24:MI:SS')  + v_end_sign * NUMTODSINTERVAL(v_end_hours, 'HOUR') + v_end_sign * NUMTODSINTERVAL(v_end_mins, 'MINUTE');
+					v_depositdate       := TO_CHAR(TO_DATE(l_TRANSACTION_OBJECT.BusinessDayDate,'YYYY-MM-DD HH24:MI:SS'),'YYMMDD');
+					v_TransactionStatus := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).TransactionStatus;
+					v_total             := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).Total;
+					v_emp_disc_ind      := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).EmployeeDiscountApplied;
+
+					v_tran_link_Typecode :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).Link_Typecode;
+					v_tran_link_TranID   :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).Link_TransactionID;
+					v_tran_link_Reason   :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).Link_Reason;						 
+					v_tran_type 		 := case 
+					                         WHEN v_type_code='RetailTransaction' and v_tran_link_Typecode='PostVoid' then 'PVOID' 
+											 when v_type_code='RetailTransaction' AND v_TransactionStatus='Finished' and v_tran_type_code=1 then 'SALE' 
+											 when v_type_code='RetailTransaction'  AND v_TransactionStatus='Finished' and v_tran_type_code=0 then 'RETURN' 
+											 when v_type_code='NoSale' then 'NOSALE'											 
+											 WHEN v_type_code='RetailTransaction' AND v_TransactionStatus='Voided' then 'VOID' 
+											 WHEN v_type_code='Deposit' Then 'TOTAL'
+											 WHEN v_type_code='RegisterCashOut' Then 'RETURN'
+											 ELSE 'VOID'
+										    end;
+
+					v_sub_tran_type 	:= case when v_emp_disc_ind='true' then 'EMP' 
+					                       else (case when v_tran_type in('TOTAL','DCLOSE','PVOID') then null else v_tran_type end)	end;
+					v_total_type		:= l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).TenderType;
+					v_ref_no1   		:= case when v_tran_type='TOTAL' and v_total_type='Cash' then '1390' when v_tran_type='DCLOSE' then '2' else v_TransactionID end;
+					v_ref_no4           := null;
+					v_loyalty_id        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).LoyaltyID;
+					v_orig_tran         := case when v_tran_type='PVOID' then SUBSTR(v_tran_link_TranID,19,4) else null end;
+					v_orig_reg          := case when v_tran_type='PVOID' then SUBSTR(v_tran_link_TranID,10,3) else null end;
+					v_bankdp_amt        :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).Amount;
+					v_bankdp            :=case when v_tran_type='TOTAL' then v_depositdate||'|'||v_depositdate||'|'||v_bankdp_amt||'|'||'0.00'||'|'||v_bankdp_amt||'|'||v_OperatorID end;			    
+					v_total_tax_amt		:=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).TotalTaxCollected;
+					l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_HEAD_STG_IN_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+					utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+					PROC_SALES_MIK_SA_HEAD_STG_IN_INS (p_stg_Id =>v_stgId ,
+													   p_store=>v_UnitID,
+													   p_business_date => case when v_tran_type='TOTAL' then v_Bankingday else v_BusinessDayDate end,
+													   p_tran_datetime =>v_EndDateTime,
+													   p_register=>case when v_tran_type='DCLOSE' then null else v_WorkstationID end,
+													   p_tran_no=>case when v_tran_type='DCLOSE' then null when v_tran_type='TOTAL' then 0 else v_tran_num end,
+													   p_cashier=>case when v_tran_type='DCLOSE' then null else v_OperatorID end,
+													   p_salesperson=>case when v_tran_type in ('DCLOSE','TOTAL') then null else v_OperatorID end,
+													   p_tran_type=>v_tran_type,
+													   p_sub_tran_type=>v_sub_tran_type,
+													   p_receipt_barcode=>v_TransactionID,
+													   p_value=>case when v_tran_type='PVOID' then '0' when v_tran_type='TOTAL' then v_bankdp_amt else v_total end,
+													   p_ref_no1=>v_ref_no1,
+													   p_ref_no4=>v_ref_no4,
+													   p_loyalty_id=>v_loyalty_id,
+													   p_begin_time=>v_BeginDateTime,
+													   p_orig_tran=>v_orig_tran,
+													   p_orig_reg=>v_orig_reg,
+													   p_rounded_amount=>v_total,
+													   p_tender_control =>null,
+													   p_total_tax_amt => v_total_tax_amt); 
+
+					l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_HEAD_STG_IN_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+					utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+
+
+			FOR head_attr in
+			(SELECT distinct ECOM_VALUE FROM mik_eref_map WHERE REF_CODE='SAHA' AND RESA_VALUE='HEAD') 
+			LOOP
+			DECLARE
+				v_attr_val VARCHAR2(200);
+
+				BEGIN
+				v_attr_val := case head_attr.ECOM_VALUE when 'LTCPN' then v_loyalty_id when 'BANKDP' then v_bankdp end;
+
+				IF v_attr_val is not null THEN 
+				v_head_attr_seq_no :=v_head_attr_seq_no+1;
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_HEAD_IN_ATTRIB_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				PROC_SALES_MIK_SA_TRAN_HEAD_IN_ATTRIB_INS(p_stg_id      =>v_stgId,
+				                                          p_store       =>v_UnitID,
+				                                          p_day         =>v_day,
+				                                          p_attr_seq_no =>v_head_attr_seq_no,
+				                                          p_attr_type   =>head_attr.ECOM_VALUE,
+				                                          p_attr_val    =>v_attr_val
+														  );
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_HEAD_IN_ATTRIB_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				END IF;
+				END;
+			END LOOP;
+
+
+			IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL IS NOT NULL  and v_tran_type NOT IN('PVOID','TOTAL','DCLOSE') THEN
+			l_cust_seq_no := l_cust_seq_no+1;
+			FOR customer_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL.COUNT LOOP
+				v_CustomerStatus   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).CustomerStatus;
+				V_CustomerID	   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).CustomerID;
+				v_AccountType	   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).AccountType;	 
+				v_FirstName        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).FirstName;      
+				v_LastName         := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).LastName;       
+				v_Address          := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).Address;        
+				v_TelephoneNumber  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).TelephoneNumber;
+				v_Mobile           := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).Mobile;         
+				v_EMailAddress     := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Customer_OBJECT_TBL(customer_rec).EMailAddress;
+				v_cust_seq_no	   := l_cust_seq_no; 
+				v_cust_name         := v_FirstName||' '||v_LastName;
+
+							l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_CUSTOMER_STG_IN_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+							utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+							PROC_SALES_MIK_SA_CUSTOMER_STG_IN_INS(p_STG_ID => v_stgId,      
+																  p_store  => v_UnitID,       
+																  p_cust_seq_no => v_cust_seq_no, 
+																  P_cust_id => V_CustomerID,     
+		                                                          p_cust_id_type =>'CUSTID',
+																  p_CustName => v_FirstName||' '||v_LastName,        
+																  p_Address => v_Address,                  
+																  p_TelephoneNumber => v_TelephoneNumber,  
+																  p_Mobile => v_Mobile,  
+																  p_EMailAddress  => v_EMailAddress     
+																  );
+
+							l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_CUSTOMER_STG_IN_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+							utl_file.put_line(g_omni_err_file_type, l_buffer);
+			FOR cust_attr in
+			(SELECT distinct ECOM_VALUE FROM mik_eref_map WHERE REF_CODE='SAHA' AND RESA_VALUE='CUST') 
+			LOOP
+			DECLARE
+				v_attr_val VARCHAR2(200);
+
+				BEGIN
+				v_attr_val := case cust_attr.ECOM_VALUE when 'CUST' then v_cust_name when 'EMAIL' then v_EMailAddress WHEN 'TELEPH' THEN  v_TelephoneNumber end;
+
+				IF v_attr_val is not null THEN 
+				v_cust_attr_seq_no :=v_cust_attr_seq_no+1;
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_CUSTOMER_IN_ATTRIB_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				PROC_SALES_MIK_SA_TRAN_CUSTOMER_IN_ATTRIB_INS(p_stg_id      =>v_stgId,
+				                                          p_store       =>v_UnitID,
+				                                          p_day         =>v_day,
+				                                          p_attr_seq_no =>v_cust_attr_seq_no,
+				                                          p_attr_type   =>cust_attr.ECOM_VALUE,
+				                                          p_attr_val    =>v_attr_val
+														  );
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_CUSTOMER_IN_ATTRIB_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				END IF;
+				END;
+			END LOOP;
+			END LOOP;
+			ELSE 
+			l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Customer_OBJECT_TBL IS NULL for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+			utl_file.put_line(g_omni_err_file_type, l_buffer);
+			END IF;
+
+
+
+		IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL is not null  and  v_tran_type NOT IN('PVOID','TOTAL','DCLOSE') then
+
+			FOR lineitem_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL.COUNT	LOOP
+                v_item_seq_no := v_item_seq_no+1;
+
+				v_Tax_flag := FALSE;
+				v_Tax_exp_flag := FALSE;
+			    v_TotalTaxAmount := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TotalTaxAmount;
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'STotal_tax_amunt' || ':' || v_TotalTaxAmount ||':'|| l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL is not null or  v_TotalTaxAmount IS NOT NULL THEN 
+				v_Tax_flag := TRUE;
+				IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL.count>0 then
+				FOR tax_ind_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL.count loop
+
+
+					IF UPPER(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL(tax_ind_rec).TaxExemption) = 'Y' THEN
+					v_Tax_exp_flag := TRUE;
+					EXIT;  --once non-exempt found, we can stop scanning
+					END IF;
+				END LOOP;
+				END IF;
+				END IF;
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_ITEM_STG_IN_INS Started for tax flag' || ':' || case WHEN v_Tax_flag then 'TRUE' ELSE 'FALSE' END || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				IF NOT v_Tax_flag THEN
+				v_tax_ind := 'N'; -- No taxes -> 'N'
+				ELSE
+				v_Tax_exp_ind := CASE WHEN v_Tax_exp_flag THEN 'Y' ELSE 'N' END;
+				v_tax_ind := 'Y';
+				END IF;
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_ITEM_STG_IN_INS Started for tax flag' || ':' || v_tax_ind || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				v_override_reason:=null;
+
+				IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL is not null then			
+					For Discline_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL.count
+					LOOP
+						IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).MethodCode='PriceOverride' AND 
+						l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).OperatorBypassApproval='Y' THEN
+
+						v_override_reason:=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).Reason;
+						v_approverid     :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).ApproverID;
+
+						ELSIF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).MethodCode='PriceOverride' AND 
+						l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).OperatorBypassApproval='N' THEN
+
+						v_override_reason:=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).Reason;
+
+						END IF;
+					END LOOP;
+				END IF;	
+
+
+				v_clearance_ind:='N';
+
+				IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_clearance_OBJECT_TBL is not null or
+                   l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_clearance_OBJECT_TBL.count>0				THEN 
+
+				FOR clearance_ind_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_clearance_OBJECT_TBL.count loop
+
+					IF UPPER(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_clearance_OBJECT_TBL(clearance_ind_rec).promoInfo1) = 'clearance' THEN
+					v_clearance_ind := 'Y';
+					EXIT;  --once clearnace found, we can stop scanning
+					END IF;
+				END LOOP;
+
+				END IF;
+
+
+				v_pos_item_seq_no                 := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).SequenceNumber;                 
+				v_CancelFlag                   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).CancelFlag;                  
+				v_Action                       := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Action;                      
+				v_ItemType                     := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ItemType;                    
+				v_ItemID		               := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ItemID;
+				v_ref_item					   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).POSItemID;
+				v_dept 						   := REGEXP_SUBSTR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).MerchandiseHierarchy,'[^-]+', 1,
+																REGEXP_COUNT(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).MerchandiseHierarchy,'-')-1);  																			
+				v_class 					   := REGEXP_SUBSTR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).MerchandiseHierarchy,'[^-]+', 1,
+																REGEXP_COUNT(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).MerchandiseHierarchy,'-'));
+				v_subclass 					   := REGEXP_SUBSTR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).MerchandiseHierarchy,'[^-]+', 1,
+																REGEXP_COUNT(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).MerchandiseHierarchy,'-')+1);
+				v_Quantity		               := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Quantity;		                   
+				v_NonDiscountableFlag          := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).NonDiscountableFlag;         
+				v_TaxExemptionEligibility      := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TaxExemptionEligibility;     
+				v_LoyaltyVoucherProratedAmount := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).LoyaltyVoucherProratedAmount;
+				v_NetUnitPrice                 := ABS(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ActualSalesUnitPrice);                
+				v_VendorID                     := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).VendorID;                    
+				v_EntryMethod                  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).EntryMethod;                 
+				v_TaxChannel                   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TaxChannel;
+				v_orig_unit_retail			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).RegularSalesUnitPrice;
+				v_selling_uom			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).UnitOfMeasureCode;
+
+				v_item_status 				   := case when v_CancelFlag='true' and v_Quantity>0 and v_Action='Return' then 'V'
+													   when v_CancelFlag='true' and v_Quantity>0 and lower(v_Action)='add' then 'S'
+                                                       when v_CancelFlag='true' and v_Quantity<0 and lower(v_Action)='add' then 'V'
+													   when v_CancelFlag='true' and v_Quantity<0 and v_Action='Return' then 'R'
+												       when v_CancelFlag='false' and v_Quantity>0 then 'S' 
+												       when v_CancelFlag='false' and v_Quantity<0 then 'R' 
+													   when v_CancelFlag='true' and v_Action is null then 'V'
+												  end;
+
+
+
+                l_ItemType := case when length(v_ref_item)<=6 then 'ITEM' else 'REF' end;			
+				v_ret_reason_code := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Reason;
+				v_org_tran_id :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TransactionID;
+				v_org_store :=SUBSTR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TransactionID,6,4);
+				v_org_tran_no :=SUBSTR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TransactionID,19,4);
+				v_org_reg := SUBSTR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TransactionID,10,3);
+				v_org_date1 := SUBSTR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TransactionID,13,6);
+				v_org_date :=TO_CHAR(TO_DATE(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).EndDateTime, 'YYYY-MM-DD HH24:MI:SS'), 'YYDDD');
+				v_org_time :=TO_CHAR(TO_DATE(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).EndDateTime, 'YYYY-MM-DD HH24:MI:SS'), 'HH24MI');
+				v_cfrm_order := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).OrderNumber;
+				v_mgrid     := CASE WHEN v_override_reason IS NOT NULL AND  v_approverid IS NOT NULL THEN v_approverid ELSE NULL END;
+				v_mgrovrd   := CASE WHEN v_override_reason IS NOT NULL AND  v_approverid IS NOT NULL THEN v_approverid||'|'||v_override_reason||'|'||'S' END;
+				v_priceovrd := CASE WHEN v_override_reason IS NOT NULL THEN v_ref_item||'|'||v_orig_unit_retail*100||'|'||v_override_reason END;
+
+				v_org_ret_ordernumber := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).org_OrderNumber;
+				l_org_ret_ordernumber := CASE WHEN v_org_ret_ordernumber NOT LIKE 'RT%' then v_org_ret_ordernumber  end;
+				BEGIN
+					SELECT
+							 TO_CHAR(TO_DATE(REGEXP_SUBSTR(l_org_ret_ordernumber,'[^-]+', 1, 1),'YYYYMMDD'),'YYDDD'),
+							 REGEXP_SUBSTR(l_org_ret_ordernumber, '[^-]+', 1,2),
+							 REGEXP_SUBSTR(l_org_ret_ordernumber, '[^-]+', 1,3),
+							 REGEXP_SUBSTR(l_org_ret_ordernumber, '[^-]+', 1,4)
+							 into v_org_ret_date,v_org_ret_store,v_org_ret_register,v_org_ret_tran_num	 
+					FROM dual;
+				END;
+
+				l_org_date1 := TO_CHAR(TO_DATE(v_org_date1,'DDMMYY'),'YYDDD');
+
+
+				l_org_tran  :=CASE WHEN l_org_ret_ordernumber IS NOT NULL THEN v_org_ret_tran_num|| '|' ||v_org_ret_store|| '|' ||v_org_ret_register|| '|' ||'00000000'|| '|' ||v_org_ret_date|| '|' ||''|| '|' ||v_ret_reason_code
+								   WHEN v_org_tran_no IS NOT NULL THEN v_org_tran_no|| '|' ||v_org_store|| '|' ||v_org_reg|| '|' ||'00000000'|| '|' ||CASE WHEN v_org_date IS NULL THEN l_org_date1 ELSE v_org_date END|| '|' ||v_org_time|| '|' ||v_ret_reason_code
+							  END;
+
+				l_cfrm_order := case when v_dept=33 then v_cfrm_order END;
+
+				v_ref_no5 := case when v_Tax_exp_ind='Y'  THEN 'TaxExmpted' when v_tax_ind='N' then 'NonTax Item' else 'Taxable' end;
+
+				v_ref_no6 := CASE WHEN v_dept=19 THEN 'CGCARD' WHEN v_dept=32 THEN 'OGCARD' WHEN v_dept=37 THEN 'Delivery Fee' ELSE NULL END;
+				v_account_id :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).AccountID;
+				v_link_item_no := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ItemLink;
+
+
+				v_ext_extendContractId      := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_extendContractId;
+				v_ext_eMailAddress          := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_eMailAddress;
+				v_ext_PlanSku               := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_PlanSku;
+				v_ext_orderId               := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_orderId;
+				v_ext_lineItemTransactionId := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_lineItemTransactionId;
+				v_ext_transactionId         := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_transactionId;
+				v_ext_skuid                 := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_skuid;
+				v_ext_purchasePrice         := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ext_purchasePrice;
+				v_ext_warsku_price          := case when v_dept=64 and v_class=795 then v_NetUnitPrice end;
+				v_ext_warsku                := case when v_dept=64 and v_class=795 then v_ItemID  end;
+				v_ext_status                := case when v_item_status='S' THEN 0 WHEN v_item_status='R' THEN 1 WHEN v_item_status='V' THEN 2 END;
+				v_Related_SequenceNumber    :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Related_SequenceNumber;
+				v_Related_TransactionID     :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Related_TransactionID;
+				v_Related_ItemID            :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Related_ItemID; 
+				v_Related_POSItemID         :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Related_POSItemID;
+
+				v_Activation_Fee_Ind        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).Activation_Fee_Ind;
+				v_ItemNotOnFileFlag         := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).ItemNotOnFileFlag;
+				v_NOFSku                    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).NOFSku;								        
+				v_UPCNOF                    := case when v_ItemNotOnFileFlag ='true' then v_NOFSku end;
+
+			/*	IF v_dept=64 AND v_class=795 THEN
+
+				BEGIN
+				SELECT UNIT_RETAIL INTO v_war_org_unit_retail
+                FROM MIK.mik_sa_item_stg_in v 
+				WHERE ITEM=v_ext_skuid 
+				AND   ITEM_SEQ_NO=v_Related_SequenceNumber 
+				AND   REF_ITEM=v_Related_POSItemID 
+				AND   STG_ID=v_stgId;
+
+				EXCEPTION
+                WHEN NO_DATA_FOUND THEN 
+                l_error_code := esb_api_codes.validation_failure;
+                l_error_mesg := 'No rows returned for v_war_org_unit_retail-parent item for warranty for TransactionID = ' || l_TRANSACTION_OBJECT.TransactionID ||'. SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+                RAISE validation_failure;
+				END;
+
+				END IF;*/
+
+				v_co_Item_Amount :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).CO_Item_Amount;
+				v_co_Sku         :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).CO_Sku;
+				v_co_POSItemId   :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).CO_POSItemId;
+
+
+				l_NetUnitPrice   := case when v_type_code='RegisterCashOut' then v_co_Item_Amount else v_NetUnitPrice end;
+				l_Quantity       := case when v_type_code='RegisterCashOut' then -1 else v_Quantity end;
+
+				v_extwar_attrib :=case when v_dept=64 AND v_class=795 THEN  v_ext_extendContractId||'|'||v_ext_warsku||'|'||v_ext_warsku_price||'|'||v_ext_PlanSku||'|'||v_ext_transactionId||'|'||v_ext_skuid||'|'||v_ext_purchasePrice||'|'||v_ext_eMailAddress||'|'||v_ext_status end;
+
+				l_ref_no5 := case when (v_Activation_Fee_Ind='Y'  or v_type_code='RegisterCashOut') then 'NonTax Item' else v_ref_no5 end;
+
+				v_indicat1 := case when v_clearance_ind='Y' and v_NonDiscountableFlag='true' then 30
+                                   when v_clearance_ind='Y' then 20
+	                               when v_NonDiscountableFlag='true' then 10 
+								   when v_type_code='RegisterCashOut' then 10 else 0 end; --RegisterCashOut is non discountable 
+				v_tax_buc  := case when  l_ref_no5='NonTax Item' then 0 else 8 END; --RegisterCashOut is non taxable 
+				v_indicat0 :=null;
+
+				v_ref_no8  := v_tax_buc|| '|' ||v_indicat0|| '|' ||v_indicat1;
+
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_ITEM_STG_IN_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				PROC_SALES_MIK_SA_ITEM_STG_IN_INS (p_stg_id=>v_stgId,
+												   p_store=>v_UnitID,
+												   p_item_seq_no=>v_item_seq_no,
+												   p_pos_item_seq_no=>v_pos_item_seq_no,
+												   p_item_status=> case when v_type_code='RegisterCashOut' then 'R' else v_item_status end,
+												   p_item_type=>case when v_Activation_Fee_Ind='Y' then 'NMITEM'  when v_type_code='RegisterCashOut' then 'REF' else l_ItemType end,
+												   p_item=>case when v_Activation_Fee_Ind='Y' then NULL when v_type_code='RegisterCashOut' then v_co_Sku else v_ItemID END,
+												   P_ref_item=>case when v_Activation_Fee_Ind='Y' then NULL when v_type_code='RegisterCashOut' then v_co_POSItemId else v_ref_item END,
+												   p_non_merch_item => case when v_Activation_Fee_Ind='Y' then v_ref_item else NULL END,
+												   p_dept=>case when v_Activation_Fee_Ind='Y' then 0 else v_dept END,
+												   p_class=>case when v_Activation_Fee_Ind='Y' then 0 else v_class END,
+												   p_subclass=>case when v_Activation_Fee_Ind='Y' then 0 else v_subclass END,
+												   p_qty=>l_Quantity,
+												   p_unit_retail=>case when v_type_code='RegisterCashOut' then v_co_Item_Amount else v_NetUnitPrice end,
+												   p_override_reason => case when v_override_reason is not null then 'T' else null end,
+												   p_orig_unit_retail => case when v_override_reason is not null then v_orig_unit_retail else null end,
+												   p_selling_uom => case when v_selling_uom='YD' then 'EA' else v_selling_uom end,
+												   p_CancelFlag => v_CancelFlag,
+												   P_tax_ind =>case when v_type_code='RegisterCashOut' then 'N' else v_tax_ind end,
+												   p_item_swp_ind => case when v_EntryMethod='SCAN' then 'Y' else 'N' end,
+												   p_cw_ind => 'N',
+												   p_ds_ind =>'N',
+												   p_ret_reason_code => null,
+												   p_org_tran  =>  v_org_tran_id,
+												   p_cfrm_order => case when l_cfrm_order is not null then l_cfrm_order ELSE NULL END,
+												   p_ref_no5 => l_ref_no5,
+												   p_ref_no6 =>case when (v_Activation_Fee_Ind='Y'  or v_type_code='RegisterCashOut') then null else v_ref_no6 end,
+												   p_mgrovrd => v_mgrid,
+												   p_ref_no7 => case when v_Activation_Fee_Ind='Y' then 'Send Fee' else '00'||'|'||abs(l_Quantity)*100||'|'||'01'||'|'||l_NetUnitPrice*100 END,
+												   p_link_item_no =>v_link_item_no,
+												   p_ref_no8 =>case when v_Activation_Fee_Ind='Y' then 'NMITEM' else  v_ref_no8 END);
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_ITEM_STG_IN_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+
+
+			FOR item_attr in
+			(SELECT distinct ECOM_VALUE FROM mik_eref_map WHERE REF_CODE='SAHA' AND RESA_VALUE='ITEM') 
+			LOOP
+			DECLARE
+				v_attr_val VARCHAR2(200);
+
+				BEGIN
+				v_attr_val :=   case item_attr.ECOM_VALUE 
+				                     when 'ORGTRAN'  then l_org_tran  
+									 when 'EXTWAR' then v_extwar_attrib 
+				                     when 'MGROVRD' then v_mgrovrd 
+									 when 'CFRM' then l_cfrm_order 
+				                     when 'UPCNOF' then v_UPCNOF 
+									 when 'GCISSUE' then v_account_id 
+									 when 'PRCOVRD' then v_priceovrd end;
+
+				IF v_attr_val is not null THEN 
+				v_item_attr_seq_no :=v_item_attr_seq_no+1;
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_ITEM_IN_ATTRIB_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				PROC_SALES_MIK_SA_TRAN_ITEM_IN_ATTRIB_INS(p_stg_id      =>v_stgId,
+				                                          p_store       =>v_UnitID,
+				                                          p_day         =>v_day,
+														  p_item_seq_no =>v_item_seq_no,
+				                                          p_attr_seq_no =>v_item_attr_seq_no,
+				                                          p_attr_type   =>item_attr.ECOM_VALUE,
+				                                          p_attr_val    =>v_attr_val
+														  );
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_ITEM_IN_ATTRIB_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				END IF;
+				END;
+			END LOOP;
+
+				l_disc_Seq_Num :=0;
+
+				IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL is not null then			
+						For Discline_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL.count
+						loop
+
+
+							IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).MethodCode not in('PriceOverride','PriceEntry') 
+							and l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).TotalAmount <> 0 THEN
+							--v_override_reason := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).Reason; 
+							--ELSE
+							l_disc_Seq_Num     := l_disc_Seq_Num+1;
+
+							v_disc_Seq_Num     := l_disc_Seq_Num;
+							v_MethodCode       := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).MethodCode;    
+							v_Disc_TypeCode	   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).TypeCode;
+							--v_disc_Seq_Num     := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).SequenceNumber;
+							v_disc_qty		   := CASE WHEN v_item_status='S' then 1 else -1 end;
+							v_promo_id		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).PromotionID;
+							v_disc_Amount1      := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).TotalAmount;        
+							v_disc_Percent     := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).Percent;       
+							v_Reason           := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).Reason;        
+							v_rms_promo_type   := case when v_emp_disc_ind='true' then '1005' else '1006' end; 
+							--v_disc_amount1      := REGEXP_REPLACE(TO_CHAR(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).TotalAmount), '\.00$', '');
+
+							--v_disc_amount1 := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).Amount;
+							  v_disc_amount :=abs(v_disc_Amount1);
+							l_disc_percent := case when v_disc_Percent is null  and v_disc_amount>0 then nvl(round((v_disc_amount/(v_NetUnitPrice*abs(v_Quantity)))*100,1),0) else nvl(v_disc_Percent,0) end;
+
+
+							v_voucher:=null;
+							IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).P_LMR_MAP_OBJECT_TBL is not null then 
+								For lmr_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).P_LMR_MAP_OBJECT_TBL.count loop
+									IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_RetailPriceModifier_OBJECT_TBL(Discline_rec).PromotionID
+										=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).P_LMR_MAP_OBJECT_TBL(lmr_rec).card_number then
+										v_voucher  :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).P_LMR_MAP_OBJECT_TBL(lmr_rec).card_number;
+										v_curr_bal :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).P_LMR_MAP_OBJECT_TBL(lmr_rec).current_balance;
+										v_loy_Id   :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).P_LMR_MAP_OBJECT_TBL(lmr_rec).loyaltyId;
+										v_rwd_used :=v_disc_Amount;
+										v_bal_rwd  :=v_curr_bal-v_disc_Amount;
+
+									END IF;
+								END LOOP;
+							END IF;
+
+							v_disc_code := case when v_item_status='S' and v_ref_no5='Taxable' then '0' 
+							                    when v_item_status='R' and v_ref_no5='Taxable' then '1' 
+										        when v_item_status='V' and v_ref_no5='Taxable'  AND v_Quantity<0 then '2'
+												when v_item_status='V' and v_ref_no5='Taxable'  AND v_Quantity>0 then '3'
+										        when v_item_status='S' and v_ref_no5='NonTax Item' then '4' 
+												when v_item_status='R' and v_ref_no5='NonTax Item' then '5'
+												when v_item_status='V' and v_ref_no5='NonTax Item' then '6' end;
+
+							l_voucher := case when v_voucher is not null THEN  v_voucher||'|'||v_rwd_used||'|'||v_bal_rwd
+										 END;
+
+							l_promo_id := case  when v_promo_id like 'AdjSet%' then '000000' 
+												when v_promo_id like 'PLCC_LMR%' then '000000' 
+												WHEN v_promo_id IS NULL THEN '888888' else v_promo_id end;
+                            v_ref_no15 := case when v_voucher is not null then '888888222444' else l_promo_id end||'|'||v_disc_code;
+
+							l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_DISC_STG_IN_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId|| 'v_disc_Amount:'||v_disc_Amount;
+				            utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+							PROC_SALES_MIK_SA_DISC_STG_IN_INS(p_stg_Id         =>v_stgId,
+							                                    p_store        => v_UnitID,
+							                                    p_item_seq_no  => v_item_seq_no,
+																p_pos_item_seq_no=>v_pos_item_seq_no,
+							                                    p_disc_Seq_Num => v_disc_Seq_Num,
+							                                    p_disc_Amount  => v_disc_Amount,
+							                                    p_promo_id     => case when v_voucher is not null then '888888' when  l_promo_id is null then '888888' else l_promo_id END,
+							                                    p_disc_qty     => v_disc_qty,
+																p_disc_type    => 'CSTMER',
+																p_voucher_id   =>v_voucher,
+																p_ref_no13 => l_disc_percent,
+																p_ref_no14 => case when l_voucher is not null then l_voucher else null end,
+																p_ref_no15 => v_ref_no15,
+																p_rms_promo_type=>v_rms_promo_type
+																);
+
+							l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_DISC_STG_IN_INS completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				            utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+						FOR disc_attr in
+			                   (SELECT distinct ECOM_VALUE FROM mik_eref_map WHERE REF_CODE='SAHA' AND RESA_VALUE='DISC') 
+			            LOOP
+			                 DECLARE
+				               v_attr_val VARCHAR2(200);
+
+				             BEGIN
+				               v_attr_val :=  l_voucher;
+
+				                IF v_attr_val is not null THEN 
+				                v_disc_attr_seq_no :=v_disc_attr_seq_no+1;
+
+				                l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_DISC_IN_ATTRIB_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				                utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				                PROC_SALES_MIK_SA_TRAN_DISC_IN_ATTRIB_INS(p_stg_id      =>v_stgId,
+				                                                          p_store       =>v_UnitID,
+				                                                          p_day         =>v_day,
+														                  p_item_seq_no =>v_item_seq_no,
+																		  p_disc_seq_no =>v_disc_Seq_Num,
+				                                                          p_attr_seq_no =>v_disc_attr_seq_no,
+				                                                          p_attr_type   =>disc_attr.ECOM_VALUE,
+				                                                          p_attr_val    =>v_attr_val
+														                  );
+
+				                l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_DISC_IN_ATTRIB_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				                utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+			                    	END IF;
+			                END;
+			            END LOOP;	
+
+						 END IF;
+						END LOOP;
+					END IF; 
+
+					l_tax_seq :=0;
+
+					IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL is not null 
+					and l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL.count>0	then
+
+						For Taxline_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL.count
+						loop
+								l_tax_seq:=l_tax_seq+1;
+
+
+						            v_Tax_Seq_Num := l_tax_seq;
+									v_tax_exempt  :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL(Taxline_rec).TaxExemption;
+									v_tax_grp_name  :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL(Taxline_rec).TaxGroupName;
+									v_Tax_Amount  :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL(Taxline_rec).Amount;
+									--v_Tax_Seq_Num :=l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).p_Tax_OBJECT_TBL(Taxline_rec).SequenceNumber;
+									v_tax_code   :=CASE WHEN v_tax_exempt='Y' then 'TXEXM' 
+														WHEN v_tax_grp_name='CA CBE Fee' THEN 'CBETX' else 'RGTX' end;
+									v_tax_bucket :=case when v_tax_code='RGTX' then 'A' 
+														when v_tax_code='CBETX' then 'B' else null end;
+
+							l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TAX_STG_IN_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				            utl_file.put_line(g_omni_err_file_type, l_buffer);
+							PROC_SALES_MIK_SA_TAX_STG_IN_INS(  p_stg_Id 		=>	  v_stgId,
+							                                   p_store			=>	  v_UnitID,
+							                                   p_item_seq_no    =>    v_item_seq_no,
+															   p_pos_item_seq_no=>    v_pos_item_seq_no,
+							                                   p_Tax_Seq_no     =>    v_Tax_Seq_Num,
+							                                   p_Tax_Amount     =>    v_Tax_Amount,  
+							                                   p_tax_code       =>    v_tax_code,
+															   p_ref_no17       =>    v_tax_bucket
+															);
+							l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TAX_STG_IN_INS completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				            utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+						FOR tax_attr in
+			                   (SELECT distinct ECOM_VALUE FROM mik_eref_map WHERE REF_CODE='SAHA' AND RESA_VALUE='TAX') 
+			            LOOP
+			                 DECLARE
+				               v_attr_val VARCHAR2(200);
+
+				             BEGIN
+				               v_attr_val :=  null;
+
+				                IF v_attr_val is not null THEN 
+				                v_tax_attr_seq_no :=v_tax_attr_seq_no+1;
+
+				                l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_TAX_IN_ATTRIB_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				                utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				                PROC_SALES_MIK_SA_TRAN_TAX_IN_ATTRIB_INS(p_stg_id      =>v_stgId,
+				                                                          p_store       =>v_UnitID,
+				                                                          p_day         =>v_day,
+														                  p_item_seq_no =>v_item_seq_no,
+																		  p_tax_seq_no =>v_tax_Seq_Num,
+				                                                          p_attr_seq_no =>v_tax_attr_seq_no,
+				                                                          p_attr_type   =>tax_attr.ECOM_VALUE,
+				                                                          p_attr_val    =>v_attr_val
+														                  );
+
+				                l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_TAX_IN_ATTRIB_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				                utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+			                    	END IF;
+			                END;
+			            END LOOP;
+
+						END LOOP;
+					ELSIF v_TotalTaxAmount IS NOT NULL THEN
+					l_tax_seq:=l_tax_seq+1;
+					l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Tax_OBJECT_TBL IS NULL but TotalTaxAmount found for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+					utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+					v_Tax_Seq_Num := l_tax_seq;
+					v_tax_exempt  := 'N';
+					v_Tax_Amount  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_LineItem_OBJECT_TBL(lineitem_rec).TotalTaxAmount;
+					v_tax_code    := 'RGTX';
+					v_tax_bucket  := 'A';
+
+					l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TAX_STG_IN_INS Started for TotalTaxAmount for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+					utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+					PROC_SALES_MIK_SA_TAX_STG_IN_INS(p_stg_Id 		=>	  v_stgId,
+					                                   p_store			=>	  v_UnitID,
+					                                   p_item_seq_no    =>    v_item_seq_no,
+					                                   p_pos_item_seq_no=>    v_pos_item_seq_no,
+					                                   p_Tax_Seq_no     =>    v_Tax_Seq_Num,
+					                                   p_Tax_Amount     =>    v_Tax_Amount,  
+					                                   p_tax_code       =>    v_tax_code,
+					                                   p_ref_no17       =>    v_tax_bucket
+					                                   );
+
+					l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TAX_STG_IN_INS completed for TotalTaxAmount for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+					utl_file.put_line(g_omni_err_file_type, l_buffer);
+					ELSE 
+					l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Tax_OBJECT_TBL IS NULL for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+					utl_file.put_line(g_omni_err_file_type, l_buffer);
+					END IF;
+				--END IF;
+
+			END LOOP;
+		ELSE 
+			l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'LineItem_OBJECT_TBL IS NULL for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+			utl_file.put_line(g_omni_err_file_type, l_buffer);
+		END IF;
+
+
+		IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL is not null and  v_tran_type NOT IN('PVOID','TOTAL','DCLOSE') then
+
+			FOR Tender_rec in 1 .. l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL.COUNT	LOOP
+
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TENDER_STG_IN_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+		        utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+
+
+				IF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType  in ('CreditDebit','PLCCTender') and
+				   l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CancelFlag<>'true' and 
+				   l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderStatus='Approved' THEN
+				l_tend_seq := l_tend_seq+1;
+
+				v_Tender_seq_no        := l_tend_seq;
+				v_TenderType           := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType;          
+				v_SubTenderType        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderType;     
+				v_Tend_TypeCode        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TypeCode;            
+				v_Tender_Amount		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Amount;		      
+				v_AmountAppliedToBill  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountAppliedToBill; 
+				v_AmountOverTendered   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountOverTendered;  
+				v_TenderDescription    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderDescription;   
+				v_SubTenderDescription := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderDescription;
+				v_PaymentIdentifier    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).PaymentIdentifier;
+				v_Card_token		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CardToken;
+				v_token_exp			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Tokenexp;
+				v_card_hash		   	   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CardHash;
+				v_auth_cc		       := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AuthorizationCode;
+				v_cc_no				   := REPLACE(l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).pan,'*',0);
+				v_masked_cc_no		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).maskedPAN;
+				v_payment_method	   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).brandName;
+				v_payment_type	       := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).cardType;
+				v_card_type            := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CardMnemonic;
+				v_cc_auth_src          := 'E';
+				v_cc_ent_mod           := 'T';
+				v_cc_cardholder_ver    := 'C';	
+				v_cc_term_id           := '1';
+				v_cc_spec_cond         := 'E';
+				v_ref_no12			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CardNumber;
+				v_returncode		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Returncode;
+				v_accountnumber		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Accountnumber;
+				v_accountid			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AccountID;
+				v_plcc_accountid	   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).PLCCAccountID;
+
+				PROC_SALES_MIK_SA_TENDER_STG_IN_INS(p_stg_Id      =>v_stgId,   
+												p_store 		=>v_UnitID,
+												p_tender_seq_no => v_Tender_seq_no,
+												p_tender_amt	=> case when v_Tend_TypeCode='Sale' then v_Tender_Amount  when v_Tend_TypeCode='Return' then -1*v_Tender_Amount ELSE v_Tender_Amount end,
+												p_cardtoken	    =>v_Card_token,
+												p_token_exp		=>v_token_exp,
+												p_card_hash		=> v_card_hash,
+												p_auth_cc		=>v_auth_cc,
+			                                    p_cc_no			=>v_cc_no,
+												p_payment_method => CASE WHEN v_TenderType='PLCCTender' THEN 'PLCC' WHEN v_payment_type='CREDIT' THEN 
+																		(CASE WHEN v_card_type is not null then (case when v_card_type = 'VI' THEN 'VISA' WHEN v_card_type = 'MC' THEN 'MASTERCARD'  WHEN v_card_type = 'AE' THEN 'AMEX'
+																		WHEN v_card_type = 'DS' THEN 'DISCOVER' END ) ELSE v_payment_method END ) WHEN v_payment_type='DEBIT' THEN 'Debit' END,
+												p_payment_type => case when v_payment_type='CREDIT' then 'CCARD' when v_payment_type='DEBIT' then 'DCARD'  when v_TenderType='PLCCTender' then 'CCARD' 
+												                  end,
+												p_cc_auth_src=>v_cc_auth_src,      
+												p_cc_ent_mod=>v_cc_ent_mod,       
+												p_cc_cardholder_ver=>v_cc_cardholder_ver,
+												p_cc_term_id=>v_cc_term_id,       
+												p_cc_spec_cond=>v_cc_spec_cond,    
+												p_ref_no11 => case when v_Tender_Amount>0 then '0' 
+												              else '400'
+   												              end,
+												p_ref_no12 =>case when v_ref_no12 is not null then v_ref_no12 else null 
+															 end,
+												p_card_type=>v_card_type
+												);
+
+
+				ELSIF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType  in('MIKReturnCard','GiftCard') and
+				      l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CancelFlag<>'true' and  
+				      l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderStatus='Approved' THEN
+				l_tend_seq := l_tend_seq+1;
+
+				v_Tender_seq_no        := l_tend_seq;
+				v_TenderType           := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType;          
+				v_SubTenderType        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderType;     
+				v_Tend_TypeCode        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TypeCode;            
+				v_Tender_Amount		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Amount;		      
+				v_AmountAppliedToBill  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountAppliedToBill; 
+				v_AmountOverTendered   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountOverTendered;  
+				v_TenderDescription    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderDescription;   
+				v_SubTenderDescription := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderDescription;
+				v_PaymentIdentifier    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).PaymentIdentifier;
+				v_Card_token		   := NULL;
+				v_token_exp			   := NULL;
+				v_card_hash		   	   := NULL;
+				v_auth_cc		       := NULL;
+				v_cc_no				   := NULL;
+				v_payment_method	   := case when v_TenderType='GiftCard' then 'GiftCard' when v_TenderType='MIKReturnCard' then 'MDSE CARD ISSUE' end;
+				v_payment_type	       := 'COUPON';
+				v_card_type            := NULL;
+				v_cc_auth_src          := NULL;
+				v_cc_ent_mod           := NULL;
+				v_cc_cardholder_ver    := NULL;	
+				v_cc_term_id           := NULL;
+				v_cc_spec_cond         := NULL;
+				v_CardNumber		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CardNumber;
+				v_ReturnCardNumber	   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).ReturnCardNumber;
+				v_ref_no12             :=case when v_payment_method='GiftCard' then v_CardNumber when  v_payment_method='MDSE CARD ISSUE' then v_ReturnCardNumber end;
+				v_returncode		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Returncode;
+				v_accountnumber		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Accountnumber;
+				v_accountid			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AccountID;
+
+
+
+				PROC_SALES_MIK_SA_TENDER_STG_IN_INS(p_stg_Id      =>v_stgId,   
+												p_store 		=>v_UnitID,
+												p_tender_seq_no => v_Tender_seq_no,
+												p_tender_amt	=>case when v_payment_method= 'MDSE CARD ISSUE' and v_Tend_TypeCode='Return'  then  -1*v_Tender_Amount else v_Tender_Amount 
+																  end,
+												p_cardtoken	    =>v_Card_token,
+												p_token_exp		=>v_token_exp,
+												p_card_hash		=> v_card_hash,
+												p_auth_cc		=>v_auth_cc,
+			                                    p_cc_no			=>v_cc_no,
+												p_payment_method =>v_payment_method,
+												p_payment_type =>v_payment_type,
+												p_cc_auth_src=>v_cc_auth_src,      
+												p_cc_ent_mod=>v_cc_ent_mod,       
+												p_cc_cardholder_ver=>v_cc_cardholder_ver,
+												p_cc_term_id=>v_cc_term_id,       
+												p_cc_spec_cond=>v_cc_spec_cond,    
+												p_ref_no11 => case when v_Tender_Amount>0 then '0' else '400' 
+															  end,
+												p_ref_no12 => v_ref_no12,
+												p_card_type =>v_card_type
+												);
+
+				ELSIF l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType ='Coupon' and
+				      l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CancelFlag<>'true' then
+				l_tend_seq := l_tend_seq+1;
+
+				v_Tender_seq_no        := l_tend_seq;
+				v_TenderType           := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType;          
+				v_SubTenderType        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderType;     
+				v_Tend_TypeCode        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TypeCode;            
+				v_Tender_Amount		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Amount;		      
+				v_AmountAppliedToBill  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountAppliedToBill; 
+				v_AmountOverTendered   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountOverTendered;  
+				v_TenderDescription    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderDescription;   
+				v_SubTenderDescription := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderDescription;
+				v_PaymentIdentifier    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).PaymentIdentifier;
+				v_Card_token		   := NULL;
+				v_token_exp			   := NULL;
+				v_card_hash		   	   := NULL;
+				v_auth_cc		       := NULL;
+				v_cc_no				   := NULL;
+				v_payment_method	   := 'Coupon';
+				v_payment_type	       := 'COUPON';
+				v_card_type            := NULL;
+				v_cc_auth_src          := NULL;
+				v_cc_ent_mod           := NULL;
+				v_cc_cardholder_ver    := NULL;	
+				v_cc_term_id           := NULL;
+				v_cc_spec_cond         := NULL;
+				v_ref_no12			   := '0';
+				v_returncode		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Returncode;
+				v_accountnumber		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Accountnumber;
+				v_accountid			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AccountID;
+
+
+
+
+				PROC_SALES_MIK_SA_TENDER_STG_IN_INS(p_stg_Id      =>v_stgId,   
+												p_store 		=>v_UnitID,
+												p_tender_seq_no => v_Tender_seq_no,
+												p_tender_amt	=>v_Tender_Amount,
+												p_cardtoken	    =>v_Card_token,
+												p_token_exp		=>v_token_exp,
+												p_card_hash		=> v_card_hash,
+												p_auth_cc		=>v_auth_cc,
+			                                    p_cc_no			=>v_cc_no,
+												p_payment_method =>v_payment_method,
+												p_payment_type =>v_payment_type,
+												p_cc_auth_src=>v_cc_auth_src,      
+												p_cc_ent_mod=>v_cc_ent_mod,       
+												p_cc_cardholder_ver=>v_cc_cardholder_ver,
+												p_cc_term_id=>v_cc_term_id,       
+												p_cc_spec_cond=>v_cc_spec_cond,    
+												p_ref_no11 => case when v_Tender_Amount>0 then '0' else '400' end,
+												p_ref_no12 => v_ref_no12,
+												p_card_type =>v_card_type
+												);
+
+
+				ELSIF (l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType in('Cash','Tender24') 
+				    OR l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_TenderType IN('Cash')) and
+				       l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CancelFlag<>'true' then
+
+				l_tend_seq := l_tend_seq+1;
+
+				v_Tender_seq_no        := l_tend_seq;
+				v_TenderType           := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderType;          
+				v_SubTenderType        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderType;     
+				v_Tend_TypeCode        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TypeCode;            
+				v_Tender_Amount		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Amount;		      
+				v_AmountAppliedToBill  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountAppliedToBill; 
+				v_AmountOverTendered   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AmountOverTendered;  
+				v_TenderDescription    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).TenderDescription;   
+				v_SubTenderDescription := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).SubTenderDescription;
+				v_PaymentIdentifier    := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).PaymentIdentifier;
+				v_Card_token		   :=NULL;
+				v_token_exp			   :=NULL;
+				v_card_hash		   	   :=NULL;
+				v_auth_cc		       :=NULL;
+				v_cc_no				   :=NULL;
+				v_payment_method	   :=case when v_TenderType='Cash' then 'CASH' 
+											  when v_TenderType='Tender24' then 'Tender24' 
+											  when v_co_TenderType= 'Cash' then 'CASH' else 'CASH' end;
+				v_payment_type	       :='CASH';
+				v_card_type            :=NULL;
+				v_cc_auth_src		   :=NULL;
+				v_cc_ent_mod           :=NULL;
+				v_cc_cardholder_ver    :=NULL;
+				v_cc_term_id           :=NULL;
+				v_cc_spec_cond         :=NULL;
+				v_co_Accountnumber     := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_Accountnumber;
+				v_co_Action            := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_Action;
+				v_co_Code              := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_Code;
+				v_co_SVATransactionID  := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_SVATransactionID;
+				v_co_AUTHCODE          := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_AUTHCODE;
+				v_co_BALANCE           := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_BALANCE;
+				v_co_TenderType        := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_TenderType;
+				v_co_Amount            := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).CO_Amount;
+				v_returncode		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Returncode;
+				v_accountnumber		   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).Accountnumber;
+				v_accountid			   := l_TRANSACTION_OBJECT.p_CustomerOrder_OBJECT_TBL(custorder_rec).p_Tender_OBJECT_TBL(Tender_rec).AccountID;
+
+
+
+				l_tender_amt := case when v_type_code='RegisterCashOut' then  -1*v_co_Amount else (case when v_TenderType='Tender24' and v_Tend_TypeCode='Sale' then -1*v_Tender_Amount when v_TenderType='Cash' and v_Tend_TypeCode='Return' THEN -1*v_Tender_Amount when v_TenderType='Cash' and v_Tend_TypeCode='ChangeDue' THEN -1*v_Tender_Amount 
+																		ELSE v_Tender_Amount  end) end;
+
+
+
+				PROC_SALES_MIK_SA_TENDER_STG_IN_INS(p_stg_Id      =>v_stgId,   
+												p_store 		=>v_UnitID,
+												p_tender_seq_no => v_Tender_seq_no,
+												p_tender_amt	=> l_tender_amt,
+												p_cardtoken	    =>v_Card_token,
+												p_token_exp		=>v_token_exp,
+												p_card_hash		=> v_card_hash,
+												p_auth_cc		=>v_auth_cc,
+			                                    p_cc_no			=>v_cc_no,
+												p_payment_method =>v_payment_method,
+												p_payment_type =>v_payment_type,
+												p_cc_auth_src=>v_cc_auth_src,      
+												p_cc_ent_mod=>v_cc_ent_mod,       
+												p_cc_cardholder_ver=>v_cc_cardholder_ver,
+												p_cc_term_id=>v_cc_term_id,       
+												p_cc_spec_cond=>v_cc_spec_cond,    
+												p_ref_no11 => case when l_tender_amt>0 then '0' else '400' end,
+												p_ref_no12 => null,
+												p_card_type =>v_card_type
+												);
+
+				ELSE 
+
+				l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'TenderType in Tender_OBJECT_TBL IS INVALID FOR THE TRANSACTION' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				END IF;
+
+
+
+			l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TENDER_STG_IN_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+			utl_file.put_line(g_omni_err_file_type, l_buffer);	
+
+					v_plcc_account_number := '578097000000'||substr(v_masked_cc_no,13);
+					v_plcc_status_code := case when v_returncode is not null then 
+					                                (case when v_returncode=09 then 2 
+													      when v_TenderType='PLCCTender' and v_returncode=01 then 4 
+													      when v_TenderType<>'PLCCTender' and v_returncode=01 then 3 end ) end;
+					l_card_hash := case when v_card_hash is not null then v_card_hash 
+					end;
+					l_token     := case when v_Card_token is not null then v_Card_token||'|'||v_token_exp||'|'||v_card_type||'|'||v_Tender_Amount||'|'||v_cc_no 
+					end;
+					l_plcc      := case when v_plcc_status_code is not null then  v_plcc_status_code||'|'||v_accountid||'|'||v_OperatorID||'|'||v_plcc_app_date||'|'||v_accountnumber 
+										when v_TenderType='PLCCTender' and v_plcc_status_code is null then 4||'|'||v_plcc_accountid||'|'||v_OperatorID||'|'||''||'|'||v_plcc_account_number  end;
+
+			FOR tender_attr in
+			                   (SELECT distinct ECOM_VALUE FROM mik_eref_map WHERE REF_CODE='SAHA' AND RESA_VALUE='TENDER') 
+			            LOOP
+			                 DECLARE
+				               v_attr_val VARCHAR2(200);
+
+				             BEGIN
+				               v_attr_val :=   case tender_attr.ECOM_VALUE 
+				                                  --  when 'TNDOVR'  then '0'  
+									                when 'MD5 HASH' then l_card_hash 
+				                                    when 'PLCC' then l_plcc 
+									                when 'TOKEN' then l_token end;
+
+				                IF v_attr_val is not null THEN 
+				                v_tender_attr_seq_no :=v_tender_attr_seq_no+1;
+
+				                l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_TENDER_IN_ATTRIB_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				                utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+				                PROC_SALES_MIK_SA_TRAN_TENDER_IN_ATTRIB_INS(p_stg_id      =>v_stgId,
+				                                                          p_store       =>v_UnitID,
+				                                                          p_day         =>v_day,
+																		  p_tend_seq_no =>v_Tender_seq_no,
+				                                                          p_attr_seq_no =>v_tender_attr_seq_no,
+				                                                          p_attr_type   =>tender_attr.ECOM_VALUE,
+				                                                          p_attr_val    =>v_attr_val
+														                  );
+
+				                l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_SA_TRAN_TENDER_IN_ATTRIB_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+				                utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+			                    	END IF;
+			                END;
+			            END LOOP;
+
+			END LOOP;  
+		ELSE 
+		l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Tender_OBJECT_TBL IS NULL for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+		utl_file.put_line(g_omni_err_file_type, l_buffer);
+		END IF;
+
+	l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_EXPORT_STG_IN_INS Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+	utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+	PROC_SALES_MIK_EXPORT_STG_IN_INS(	p_stg_Id      =>v_stgId,
+										p_store 	  =>v_UnitID,
+										p_day         =>v_BusinessDayDate,
+										p_tran_no     => v_tran_num,
+										p_register    =>v_WorkstationID,
+										p_sys_code    =>v_sys_code,
+										p_exp_status  =>v_exp_status
+									);
+
+	l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc PROC_SALES_MIK_EXPORT_STG_IN_INS Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+	utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+
+/*
+	l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc Insertion into MIK_SA_TAX_STG_IN table for voided items Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+	utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+	BEGIN
+	INSERT INTO MIK.MIK_SA_TAX_STG_IN
+                                      (
+                                      STG_ID, 
+                                      STORE, 
+                                      ITEM_SEQ_NO,
+                                      POS_ITEM_SEQ_NO,									  
+                                      TAX_CODE, 
+                                      TAX_SEQ_NO, 
+                                      TAX_AMT, 
+                                      REF_NO17, 
+                                      REF_NO18, 
+                                      REF_NO19, 
+                                      REF_NO20
+                                      )
+	                                    SELECT v.stg_id,
+											   v.store,
+											   v.item_seq_no,
+                                               v.pos_item_seq_no AS void_item_seq_no,
+                                               tx.tax_code, 
+	                                    	  tx.TAX_SEQ_NO,
+											  -1*tx.tax_amt as tax_amt,
+	                                    	  tx.REF_NO17,
+	                                    	  tx.REF_NO18,
+	                                    	  tx.REF_NO19,
+	                                    	  tx.REF_NO20
+                                        FROM mik.mik_sa_item_stg_in v
+                                        JOIN mik.mik_sa_item_stg_in p
+                                          ON p.stg_id = v.stg_id
+                                         AND p.pos_item_seq_no = v.MEDIA_ID
+                                        JOIN mik.mik_sa_tax_stg_in tx
+                                          ON tx.stg_id = p.stg_id
+                                         AND tx.pos_item_seq_no = p.pos_item_seq_no
+                                        WHERE v.item_status = 'V' --and v.tax_ind='N'
+                                         AND v.MEDIA_ID IS NOT NULL and v.stg_id =v_stgId
+										 AND NOT EXISTS (select 1 from mik.mik_sa_tax_stg_in txv 
+										                   where txv.stg_id=v.stg_id 
+														   and txv.pos_item_seq_no=v.pos_item_seq_no
+														  );
+	END;
+
+	l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc Insertion into MIK_SA_TAX_STG_IN table for voided items Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+	utl_file.put_line(g_omni_err_file_type, l_buffer); */
+
+	l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc Insertion into MIK_SA_DISC_STG_IN table for voided items Started for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+	utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+	BEGIN
+	INSERT INTO MIK.MIK_SA_DISC_STG_IN
+                                      (
+                                        STG_ID,             
+										STORE,                             
+										ITEM_SEQ_NO,
+										POS_ITEM_SEQ_NO,
+										DISCOUNT_SEQ_NO,         
+										RMS_PROMO_TYPE,                 
+										PROMOTION,                      
+										DISC_TYPE,                       
+										COUPON_NO,                   
+										COUPON_REF_NO,                
+										QTY,                             
+										STANDARD_QTY,                  
+										STANDARD_UNIT_DISC_AMT,         
+										REF_NO13,                      
+										REF_NO14,                  
+										REF_NO15,                        
+										REF_NO16,                 
+										ERROR_IND,                    
+										UOM_QUANTITY,                
+										CATCHWEIGHT_IND,         
+										PROMO_COMP,                   
+										UNIT_DISCOUNT_AMT 
+                                      )
+	                                    SELECT v.stg_id,
+											   v.store,
+											   v.item_seq_no,
+                                               v.pos_item_seq_no AS void_item_seq_no,
+	                                    	  dc.DISCOUNT_SEQ_NO,
+											  dc.RMS_PROMO_TYPE,
+											  dc.PROMOTION,    
+											  dc.DISC_TYPE,    
+											  dc.COUPON_NO,    
+											  dc.COUPON_REF_NO,
+											  -1*dc.QTY as QTY,          
+											  dc.STANDARD_QTY,           
+											  dc.STANDARD_UNIT_DISC_AMT, 
+											  dc.REF_NO13,               
+											  dc.REF_NO14,               
+											  dc.REF_NO15,               
+											  dc.REF_NO16,               
+											  dc.ERROR_IND,              
+											  dc.UOM_QUANTITY,           
+											  dc.CATCHWEIGHT_IND,        
+											  dc.PROMO_COMP,             
+											  dc.UNIT_DISCOUNT_AMT 
+                                        FROM mik.mik_sa_item_stg_in v
+                                        JOIN mik.mik_sa_item_stg_in p
+                                          ON p.stg_id = v.stg_id
+                                         AND p.pos_item_seq_no = v.MEDIA_ID
+                                        JOIN mik.mik_sa_disc_stg_in dc
+                                          ON dc.stg_id = p.stg_id
+                                         AND dc.pos_item_seq_no = p.pos_item_seq_no
+                                        WHERE v.item_status = 'V' 
+                                         AND v.MEDIA_ID IS NOT NULL and v.stg_id =v_stgId
+										 AND NOT EXISTS (select 1 from mik.mik_sa_disc_stg_in dcv 
+										                   where dcv.stg_id=v.stg_id 
+														   and dcv.pos_item_seq_no=v.pos_item_seq_no
+														  );
+	END;
+
+	l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') ||':' ||'Sub Proc Insertion into MIK_SA_DISC_STG_IN table for voided items Completed for TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stgId'|| ':'||v_stgId;
+	utl_file.put_line(g_omni_err_file_type, l_buffer);
+
+	 END LOOP;
+	END IF;
+ END IF;
+END LOOP;
+END IF;
+  IF l_error_code = esb_api_codes.success THEN
+    BEGIN
+      COMMIT;
+      o_status_code :=0;
+      l_buffer      := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID||'Commit to Transaction Hub tables successful';
+      utl_file.put_line(g_omni_err_file_type, l_buffer);
+    EXCEPTION
+    WHEN OTHERS THEN
+      l_error_mesg  := 'Error : Commiting records For OrderId = ' || l_TRANSACTION_OBJECT.TransactionID;
+      l_error_code  := esb_api_codes.unknown_error;
+      o_status_code :=1;
+      RAISE PROGRAM_ERROR;
+    END;
+  END IF;
+
+/*********************************************************************/
+-- Insert record to esb_inbound_hist to save successfully loaded store information in RETEK6.
+  IF l_error_code = esb_api_codes.success THEN
+    BEGIN
+      l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ':' ||'Started Program esb_inbound.add_to_history';
+      utl_file.put_line(g_omni_err_file_type, l_buffer);
+      l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss') || ':'||'TransactionID' ||':' ||'Program execution completed Successfully for esb_inbound.add_to_history';
+      utl_file.put_line(g_omni_err_file_type, l_buffer);
+      l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID ||':' ||'Procedure MIK_OMNI_SALES_IMPORT Completed Successfully';
+      utl_file.put_line(g_omni_err_file_type, l_buffer);
+      O_STATUS_MSG := P_MESSAGE_ID || ' - Processed successfully in MIK_OMNI_SALES_IMPORT package';
+      utl_file.fclose(g_omni_err_file_type);
+    EXCEPTION
+    WHEN OTHERS THEN
+      l_error_mesg  := 'FAILED TO ADD MESSAGE TO HISTORY. SQLCODE = ' || SQLCODE || ' SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+      l_error_code  := esb_api_codes.unknown_error;
+      o_status_code := 1;
+      ROLLBACK;
+      RAISE;
+    END;
+  END IF;
+  /*********************************************************************/
+EXCEPTION
+WHEN validation_failure THEN
+  o_status_code := 1;
+  ROLLBACK;
+  IF l_error_mesg IS NULL THEN
+    l_error_mesg  := 'VALIDATION FAILURE OCCURRED. SQLCODE = ' || SQLCODE || ' SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  END IF;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => CASE WHEN l_TRANSACTION_OBJECT IS NOT NULL THEN l_TRANSACTION_OBJECT.TransactionID ELSE NULL END,
+    p_stg_id => v_stgId,
+    p_message_id => P_MESSAGE_ID,
+    p_procedure_name => 'import_omni_sales_data (validation_failure)',
+    p_poslog_data => P_POSLOG
+  );
+  l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'OrderId' || ':' ||  l_TRANSACTION_OBJECT.TransactionID || ' and stg_id '|| ':'||v_stgid|| ':' ||' has Validation_failure with Error Code'|| ':' || l_error_code||' and Error Msg' || ':' || l_error_mesg;
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'OrderId' || ':' ||  l_TRANSACTION_OBJECT.TransactionID || ' and stg_id '|| ':'||v_stgid|| ':' ||'Started Program esb_inbound_error.write_error for Validation failure';
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  esb_inbound_error.write_error ( i_source => p_source, i_message_id => p_message_id, i_domain => p_domain, i_action => p_action, i_publish_time => p_publish_time, i_error_code => l_error_code, i_error_message => l_error_mesg, i_queue_name => p_queue_name, i_payload => p_poslog, i_key1 =>  l_TRANSACTION_OBJECT.TransactionID
+  --i_key2 => l_order_object.p_Invoice_TBL(Invoice_Rec).InvoiceId
+  );
+  O_STATUS_MSG := P_MESSAGE_ID || ' - Failed in MIK_OMNI_SALES_IMPORT package with error: '||l_error_mesg;
+  l_buffer     := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'OrderId' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stg_id '|| ':'||v_stgid|| ':' ||'Completed Program esb_inbound_error.write_error for Validation failure';
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  utl_file.fclose(g_omni_err_file_type);
+WHEN too_many_rows THEN
+  o_status_code := 1;
+  ROLLBACK;
+  IF l_error_mesg IS NULL THEN
+    l_error_mesg  := 'TOO MANY ROWS ERROR OCCURRED. SQLCODE = ' || SQLCODE || ' SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  END IF;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => CASE WHEN l_TRANSACTION_OBJECT IS NOT NULL THEN l_TRANSACTION_OBJECT.TransactionID ELSE NULL END,
+    p_stg_id => v_stgId,
+    p_message_id => P_MESSAGE_ID,
+    p_procedure_name => 'import_omni_sales_data (too_many_rows)',
+    p_poslog_data => P_POSLOG
+  );
+  l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stg_id '|| ':'||v_stgid|| ':' ||' has Validation_failure with Error Code'|| ':' || l_error_code||' and Error Msg' || ':' || l_error_mesg;
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stg_id '|| ':'||v_stgid|| ':' ||'Started Program esb_inbound_error.write_error for Validation failure';
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  esb_inbound_error.write_error ( i_source => p_source, i_message_id => p_message_id, i_domain => p_domain, i_action => p_action, i_publish_time => p_publish_time, i_error_code => l_error_code, i_error_message => l_error_mesg, i_queue_name => p_queue_name, i_payload => p_poslog, i_key1 => l_TRANSACTION_OBJECT.TransactionID
+  -- i_key2  => l_order_object.p_Invoice_TBL(Invoice_Rec).InvoiceId
+  );
+  O_STATUS_MSG := P_MESSAGE_ID || ' - Failed in MIK_OMNI_SALES_IMPORT package with error: '||l_error_mesg;
+  l_buffer     := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' || l_TRANSACTION_OBJECT.TransactionID || ' and stg_id '|| ':'||v_stgid|| ':' ||'Completed Program esb_inbound_error.write_error for Validation failure';
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  utl_file.fclose(g_omni_err_file_type);
+WHEN OTHERS THEN
+  o_status_code := 1;
+  l_error_code  := esb_api_codes.unknown_error;
+  ROLLBACK;
+  IF l_error_mesg IS NULL THEN
+    l_error_mesg  := 'UNEXPECTED ERROR OCCURRED. SQLCODE = ' || SQLCODE || ' SQLERRM = ' || SQLERRM || 'Error raised: '|| DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+  END IF;
+  PROC_LOG_IMPORT_ERROR(
+    p_error_code => l_error_code,
+    p_error_message => l_error_mesg,
+    p_transaction_id => CASE WHEN l_TRANSACTION_OBJECT IS NOT NULL THEN l_TRANSACTION_OBJECT.TransactionID ELSE NULL END,
+    p_stg_id => v_stgId,
+    p_message_id => P_MESSAGE_ID,
+    p_procedure_name => 'import_omni_sales_data (general)',
+    p_poslog_data => P_POSLOG
+  );
+  l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' ||  l_TRANSACTION_OBJECT.TransactionID ||' has Program Error with Error Code'|| ':' || l_error_code||' and Error Msg' || ':' || l_error_mesg;
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  l_buffer := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' ||  l_TRANSACTION_OBJECT.TransactionID ||':'||'Started Program esb_inbound_error.write_error for Program Error';
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  esb_inbound_error.write_error ( i_source => p_source, i_message_id => p_message_id, i_domain => p_domain, i_action => p_action, i_publish_time => p_publish_time, i_error_code => l_error_code, i_error_message => l_error_mesg, i_queue_name => p_queue_name, i_payload => p_poslog, i_key1 =>  l_TRANSACTION_OBJECT.TransactionID );
+  O_STATUS_MSG := P_MESSAGE_ID || ' - Failed in MIK_OMNI_SALES_IMPORT package with error: '||l_error_mesg;
+  l_buffer     := TO_CHAR(sysdate, 'dd-mm-yyyy hh24:mi:ss')|| ':' ||'TransactionID' || ':' ||  l_TRANSACTION_OBJECT.TransactionID ||':'||'Completed Program esb_inbound_error.write_error for Program Error';
+  utl_file.put_line(g_omni_err_file_type, l_buffer);
+  utl_file.fclose(g_omni_err_file_type);
+END import_omni_sales_data;
+
+END MIK_OMNI_SALES_IMPORT;
