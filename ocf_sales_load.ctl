@@ -1,0 +1,37 @@
+LOAD DATA
+CHARACTERSET UTF8
+INFILE *
+APPEND
+INTO TABLE MIK_OCF_SUMMARY_TBL
+WHEN (1:1) = 'S'
+FIELDS TERMINATED BY '|' OPTIONALLY ENCLOSED BY '"' TRAILING NULLCOLS
+(
+  SUMMARY_INDICATOR         CHAR(10),
+  TRANSACTION_TYPE          CHAR(10),
+  COMPANY_CODE              CHAR(10),
+  STORE_TRANSACTION_TYPE    CHAR(10),
+  PO_NUMBER                 CHAR(50) "'MCF' || :PO_NUMBER",
+  CUSTOMER_NUMBER           CHAR(50),
+  STORE_WEB_INDICATOR       CHAR(10),
+  STORE_NUMBER              CHAR(10),
+  ORDER_NUMBER              CHAR(50) "'MCF' || :ORDER_NUMBER",
+  TERMINAL_NO               CHAR(10),
+  DATE_OF_SALE              CHAR(20),
+  ETA_DATE                  CHAR(20),
+  TAX_FLAG                  CHAR(20),
+  TAX_CODE_APPLICABLE       CHAR(20),
+  TAX_RATE                  CHAR(50),
+  GROSS_SALES               CHAR(50),
+  NET_SALES                 CHAR(50),
+  NUMBER_OF_UNITS           CHAR(50),
+  SALES_TAX                 CHAR(50),
+  CREDIT_CARD_NUMBER        CHAR(100),
+  AMOUNT_FROM_PROCESSOR     CHAR(50),
+  PROFILE_ID                CHAR(100),
+  TRANSACTION_NO_FROM_CHASE CHAR(100),
+  BANK_NAME                 CHAR(50),
+  LOAD_DATE                 SYSDATE,
+  LOAD_STATUS               CONSTANT 'N',
+  INSERTTIME                SYSDATE
+)
+
