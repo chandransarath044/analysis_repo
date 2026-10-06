@@ -1,5 +1,12 @@
 #!/usr/bin/ksh
 
+################################################################################
+# Script Name: mik_ocf_sales_import.ksh
+# Description: Load OCF Sales data from file into staging tables and invoke sales import
+# Author: TCS
+# Date: May 2026
+# Version: 1.0
+################################################################################
 # set -x
 
 # Load environment variables (modify path as per your environment)
@@ -92,22 +99,66 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Process input file with SQL*Loader
+# ─────────────────────────────────────────────────────────────────────
+# Pre-load validation: Composite key duplicate check
+# ─────────────────────────────────────────────────────────────────────
+echo "Performing pre-load validation..."
+LOG_TXT="Performing pre-load validation for duplicate PO records"
+log_msg
+
 for FILE in $PROCESS_IN_DIR/EODExportFile*.txt; do
     FILENAME=$(basename "$FILE")
+    
+    echo "Running validation script for: $FILENAME"
+    
+    # Source the validation script and capture filtered file path
+    FILTERED_FILE=$($ScriptDir/validate_po_duplicates.ksh "$FILE" 2>&1 | tail -n1)
+    VALIDATION_EXIT=$?
+    
+    if [ $VALIDATION_EXIT -ne 0 ] || [ -z "$FILTERED_FILE" ]; then
+        echo "Error: Validation script failed"
+        ERROR_TXT="Error: Validation script failed for $FILENAME"
+        error_msg
+        exit 1
+    fi
+    
+    if [ ! -f "$FILTERED_FILE" ]; then
+        echo "Error: Filtered file not created: $FILTERED_FILE"
+        ERROR_TXT="Error: Filtered file not created: $FILTERED_FILE"
+        error_msg
+        exit 1
+    fi
+    
+    echo "Validation passed. Using filtered file: $FILTERED_FILE"
+    LOG_TXT="Validation passed for $FILENAME. Filtered file ready for load"
+    log_msg
+done
+
+# ─────────────────────────────────────────────────────────────────────
+# Process input file with SQL*Loader (using filtered files)
+# ─────────────────────────────────────────────────────────────────────
+for FILE in $PROCESS_IN_DIR/EODExportFile*.txt; do
+    FILENAME=$(basename "$FILE")
+    
+    # Get filtered file path
+    FILTERED_FILE=$($ScriptDir/validate_po_duplicates.ksh "$FILE" 2>&1 | tail -n1)
+    
     NEW_FILENAME="${FILENAME%.txt}_$TIMESTAMP.dat"
 
-    # Copy the file
-    cp "$FILE" "$PROCESS_OUT_DIR/$NEW_FILENAME"
+    # Copy the filtered file
+    cp "$FILTERED_FILE" "$PROCESS_OUT_DIR/$NEW_FILENAME"
     
     if [ $? -ne 0 ]; then
-        echo "Error: Unable to copy $FILE to $NEW_FILENAME"
-        ERROR_TXT="Error: Unable to copy $FILE to $NEW_FILENAME"
+        echo "Error: Unable to copy $FILTERED_FILE to $NEW_FILENAME"
+        ERROR_TXT="Error: Unable to copy filtered file to $NEW_FILENAME"
         error_msg
         exit 1
     fi
 
-    echo "Loading data using SQL*Loader..."
+    echo "Loading filtered data using SQL*Loader..."
+    LOG_TXT="Loading filtered data using SQL*Loader for $FILENAME"
+    log_msg
+    
     # Run SQL*Loader
     sqlldr $UP control=$control_file data="$PROCESS_OUT_DIR/$NEW_FILENAME" log=$LDRLOGFILE bad=$PROCESS_OUT_DIR/${NEW_FILENAME}.bad errors=10000
     status=$?
